@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "framer-motion";
 import { ShieldCheck, UserCheck, Key, Eye, HelpCircle, ArrowRight, UserPlus } from "lucide-react";
+import { API_BASE_URL } from "../lib/config";
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -39,7 +40,7 @@ export default function OnboardingPage() {
     };
 
     try {
-      const response = await fetch(`http://127.0.0.1:8000/auth/${endpoint}`, {
+      const response = await fetch(`${API_BASE_URL}/auth/${endpoint}`, {
         method: "POST",
         headers,
         body
@@ -64,7 +65,7 @@ export default function OnboardingPage() {
     setLoading(true);
     setError(null);
     try {
-      const response = await fetch("http://127.0.0.1:8000/auth/guest", {
+      const response = await fetch(`${API_BASE_URL}/auth/guest`, {
         method: "POST"
       });
       

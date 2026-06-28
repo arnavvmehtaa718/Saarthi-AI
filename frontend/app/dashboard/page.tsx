@@ -15,6 +15,7 @@ import AccessibilityControls from "../../components/dashboard/AccessibilityContr
 import AnalyticsDashboard from "../../components/dashboard/AnalyticsDashboard";
 import SchemeCompare from "../../components/dashboard/SchemeCompare";
 import { t, Language } from "../../lib/translations";
+import { API_BASE_URL } from "../../lib/config";
 
 type ActiveTabType = "dashboard" | "agent" | "explorer" | "vault" | "compare" | "timeline";
 
@@ -88,7 +89,7 @@ export default function DashboardPage() {
       const headers = { Authorization: `Bearer ${activeToken}` };
 
       // 1. Fetch Profile
-      const profRes = await fetch("http://127.0.0.1:8000/profile", { headers });
+      const profRes = await fetch(`${API_BASE_URL}/profile`, { headers });
       if (profRes.ok) {
         const profData = await profRes.json();
         setProfile(profData);
@@ -96,7 +97,7 @@ export default function DashboardPage() {
 
       // Fetch Consumer ID
       try {
-        const identityRes = await fetch("http://127.0.0.1:8000/profile/me", { headers });
+        const identityRes = await fetch(`${API_BASE_URL}/profile/me`, { headers });
         if (identityRes.ok) {
           const identityData = await identityRes.json();
           setConsumerId(identityData.consumer_id);
@@ -106,14 +107,14 @@ export default function DashboardPage() {
       }
 
       // 2. Fetch Vault Documents
-      const docsRes = await fetch("http://127.0.0.1:8000/vault", { headers });
+      const docsRes = await fetch(`${API_BASE_URL}/vault`, { headers });
       if (docsRes.ok) {
         const docsData = await docsRes.json();
         setVaultDocs(docsData);
       }
 
       // 3. Fetch Recommendations
-      const recomRes = await fetch(`http://127.0.0.1:8000/schemes/recommendations?lang=${currentLang}`, { headers });
+      const recomRes = await fetch(`${API_BASE_URL}/schemes/recommendations?lang=${currentLang}`, { headers });
       if (recomRes.ok) {
         const recomData = await recomRes.json();
         setSchemes(recomData);
@@ -124,14 +125,14 @@ export default function DashboardPage() {
       }
 
       // 4. Fetch Analytics
-      const analyRes = await fetch("http://127.0.0.1:8000/analytics", { headers });
+      const analyRes = await fetch(`${API_BASE_URL}/analytics`, { headers });
       if (analyRes.ok) {
         const analyData = await analyRes.json();
         setAnalytics(analyData);
       }
 
       // 5. Fetch Chat History
-      const chatRes = await fetch("http://127.0.0.1:8000/chat/history", { headers });
+      const chatRes = await fetch(`${API_BASE_URL}/chat/history`, { headers });
       if (chatRes.ok) {
         const chatData = await chatRes.json();
         setChatMessages(chatData);
@@ -169,7 +170,7 @@ export default function DashboardPage() {
         "Content-Type": "application/json"
       };
 
-      const res = await fetch("http://127.0.0.1:8000/profile", {
+      const res = await fetch(`${API_BASE_URL}/profile`, {
         method: "PUT",
         headers,
         body: JSON.stringify(updated)
@@ -177,7 +178,7 @@ export default function DashboardPage() {
 
       if (res.ok) {
         // Trigger recommendation re-fetch
-        const recomRes = await fetch(`http://127.0.0.1:8000/schemes/recommendations?lang=${language}`, { headers });
+        const recomRes = await fetch(`${API_BASE_URL}/schemes/recommendations?lang=${language}`, { headers });
         if (recomRes.ok) {
           const recomData = await recomRes.json();
           setSchemes(recomData);
@@ -189,7 +190,7 @@ export default function DashboardPage() {
         }
 
         // Re-fetch analytics
-        const analyRes = await fetch("http://127.0.0.1:8000/analytics", { headers });
+        const analyRes = await fetch(`${API_BASE_URL}/analytics`, { headers });
         if (analyRes.ok) {
           const analyData = await analyRes.json();
           setAnalytics(analyData);
@@ -204,7 +205,7 @@ export default function DashboardPage() {
   const loadSchemeDetail = async (schemeId: number, activeToken: string, currentLang: string = language) => {
     try {
       const headers = { Authorization: `Bearer ${activeToken}` };
-      const compRes = await fetch(`http://127.0.0.1:8000/schemes/compare?ids=${schemeId}&lang=${currentLang}`, { headers });
+      const compRes = await fetch(`${API_BASE_URL}/schemes/compare?ids=${schemeId}&lang=${currentLang}`, { headers });
       if (compRes.ok) {
         const detail = await compRes.json();
         if (detail.length > 0) {
@@ -225,7 +226,7 @@ export default function DashboardPage() {
         "Content-Type": "application/json"
       };
 
-      const res = await fetch("http://127.0.0.1:8000/schemes/status", {
+      const res = await fetch(`${API_BASE_URL}/schemes/status`, {
         method: "POST",
         headers,
         body: JSON.stringify({ scheme_id: schemeId, status })
@@ -257,7 +258,7 @@ export default function DashboardPage() {
       formData.append("file", file);
       formData.append("category_override", category);
 
-      const res = await fetch("http://127.0.0.1:8000/vault/upload", {
+      const res = await fetch(`${API_BASE_URL}/vault/upload`, {
         method: "POST",
         headers: { Authorization: `Bearer ${token}` },
         body: formData
@@ -281,7 +282,7 @@ export default function DashboardPage() {
   const handleDocDelete = async (id: number) => {
     if (!token) return;
     try {
-      const res = await fetch(`http://127.0.0.1:8000/vault/${id}`, {
+      const res = await fetch(`${API_BASE_URL}/vault/${id}`, {
         method: "DELETE",
         headers: { Authorization: `Bearer ${token}` }
       });
@@ -312,7 +313,7 @@ export default function DashboardPage() {
 
     try {
       const idsQuery = compareIds.map((id) => `ids=${id}`).join("&");
-      const res = await fetch(`http://127.0.0.1:8000/schemes/compare?${idsQuery}&lang=${language}`, {
+      const res = await fetch(`${API_BASE_URL}/schemes/compare?${idsQuery}&lang=${language}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       if (res.ok) {
@@ -337,7 +338,7 @@ export default function DashboardPage() {
     setChatMessages((prev) => [...prev, tempUserMsg]);
 
     try {
-      const res = await fetch("http://127.0.0.1:8000/chat/message", {
+      const res = await fetch(`${API_BASE_URL}/chat/message`, {
         method: "POST",
         headers: {
           Authorization: `Bearer ${token}`,
@@ -377,7 +378,7 @@ export default function DashboardPage() {
         }
         
         // Refresh analytics in background
-        const analyRes = await fetch("http://127.0.0.1:8000/analytics", {
+        const analyRes = await fetch(`${API_BASE_URL}/analytics`, {
           headers: { Authorization: `Bearer ${token}` }
         });
         if (analyRes.ok) {
