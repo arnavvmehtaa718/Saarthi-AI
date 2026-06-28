@@ -1,0 +1,37 @@
+# Node / Next.js
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+node_modules/
+.next/
+
+# Python virtual environment & cache
+backend/venv/
+venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+backend/.pytest_cache/
+.venv/
+
+# Environment files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+backend/.env
+frontend/.env
+frontend/.env.local
+
+# Databases & data
+backend/saarthi.db
+*.db
+backend/uploads/*
+!backend/uploads/.gitkeep
+
+# IDEs & System files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
