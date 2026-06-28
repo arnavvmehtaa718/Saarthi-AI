@@ -16,7 +16,7 @@ An interactive simulation matrix calculating scheme matches instantly upon profi
 
 ### 3. Caseworker AI Assistant Panel
 An advanced chat advisor collaborating with orchestrator agents in the background to answer queries, draft cover letters, and suggest schemes.
-![AI Assistant](images/chat_assistant.png)
+![AI Assistant](images/chat_assistant_dark.png)
 
 ---
 
@@ -122,7 +122,7 @@ saarthi-ai/
 ├── images/                  # Project screenshots (used in README)
 │   ├── landing_page.png
 │   ├── dashboard_overview.png
-│   └── chat_assistant.png
+│   └── chat_assistant_dark.png
 ├── docker-compose.yml
 └── README.md
 ```
