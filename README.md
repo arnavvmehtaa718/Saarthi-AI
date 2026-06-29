@@ -4,6 +4,14 @@ Saarthi AI is an enterprise-grade, AI-native multi-agent platform designed to ac
 
 ---
 
+## 🌐 Live Demo
+
+Experience the live deployed platform:
+* **Frontend Portal (Vercel)**: [https://saarthi-ai-dev.vercel.app](https://saarthi-ai-dev.vercel.app)
+* **Backend API Gateway (Render)**: [https://saarthi-ai-ztrc.onrender.com](https://saarthi-ai-ztrc.onrender.com)
+
+---
+
 ## ✨ Application Screenshots
 
 ### 1. Welcome Onboarding Landing Page
@@ -167,18 +175,27 @@ This project includes a **GitHub Actions CI Pipeline** configured in `.github/wo
 
 ### 2. Setup Frontend
 1. Open a new terminal in the `frontend/` directory.
-2. Build and launch Next.js in development mode:
+2. Configure your environment variables in `.env` (by default, the application fallback is set to the deployed Render backend `https://saarthi-ai-ztrc.onrender.com`).
+3. Build and launch Next.js in development mode:
    ```bash
    npm run dev
    ```
-3. Open `http://localhost:3000` in your web browser.
+4. Open `http://localhost:3000` in your web browser. Note that the live production frontend is deployed on Vercel at [https://saarthi-ai-dev.vercel.app](https://saarthi-ai-dev.vercel.app).
 
 ---
 
-## 🐳 Running with Docker Compose (Production Ready)
+## 🐳 Running with Docker Compose
 
-To run the entire platform with containerized services:
+To run the entire platform with containerized services locally:
 ```bash
 docker-compose up --build
 ```
-This launches the backend on `http://localhost:8000` and the Next.js portal on `http://localhost:3000`.
+This launches the backend locally on `http://localhost:8000` (live production backend is on Render: `https://saarthi-ai-ztrc.onrender.com`) and the Next.js portal locally on `http://localhost:3000` (live production frontend is on Vercel: `https://saarthi-ai-dev.vercel.app`).
+
+---
+
+## ☁️ Deployment
+
+* **Frontend**: Hosted on Vercel ([https://saarthi-ai-dev.vercel.app](https://saarthi-ai-dev.vercel.app))
+* **Backend**: Hosted on Render ([https://saarthi-ai-ztrc.onrender.com](https://saarthi-ai-ztrc.onrender.com))
+* **Communication**: The frontend communicates with the deployed backend using environment variables (specifically `NEXT_PUBLIC_API_URL` pointing to the Render URL).
