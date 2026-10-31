@@ -6,6 +6,7 @@ import { UserCheck, Sliders, MapPin, IndianRupee, HelpCircle } from "lucide-reac
 import { t, Language } from "../../lib/translations";
 
 export interface ProfileData {
+  full_name?: string | null;
   state: string;
   age: number;
   annual_income: number;
@@ -16,6 +17,12 @@ export interface ProfileData {
   land_area_hectares: number;
   is_disabled: boolean;
   disability_percentage: number;
+  has_ration_card?: boolean | null;
+  is_rural?: boolean | null;
+  owns_house?: boolean | null;
+  family_beneficiary_count?: number;
+  has_business_plan?: boolean | null;
+  is_government_employee?: boolean | null;
 }
 
 interface ProfileSimulatorProps {
@@ -25,8 +32,14 @@ interface ProfileSimulatorProps {
 }
 
 export default function ProfileSimulator({ profile, onProfileChange, language }: ProfileSimulatorProps) {
-  const handleChange = (key: keyof ProfileData, value: any) => {
-    const updated = { ...profile, [key]: value };
+  const toTriState = (value: boolean | null | undefined): string =>
+    value === true ? "yes" : value === false ? "no" : "unknown";
+
+  const fromTriState = (value: string): boolean | null =>
+    value === "yes" ? true : value === "no" ? false : null;
+
+  const handleChange = (key: keyof ProfileData, value: ProfileData[keyof ProfileData]) => {
+    const updated: ProfileData = { ...profile, [key]: value };
     
     // Automatically toggle flags depending on fields
     if (key === "occupation" && value === "Student") {
@@ -81,6 +94,21 @@ export default function ProfileSimulator({ profile, onProfileChange, language }:
       </div>
 
       <div className="space-y-4 text-sm">
+        {/* Optional name used in generated application letters */}
+        <div>
+          <label className="flex items-center gap-1.5 font-medium text-slate-300 mb-1">
+            <UserCheck className="h-4 w-4 text-sky-500" />
+            {t("sim_name", language)}
+          </label>
+          <input
+            type="text"
+            value={profile.full_name || ""}
+            onChange={(e) => handleChange("full_name", e.target.value || null)}
+            placeholder={t("sim_name_placeholder", language)}
+            className="w-full bg-slate-900 border border-border rounded-md px-3 py-2 outline-none focus:ring-1 focus:ring-sky-500 transition-all text-slate-200"
+          />
+        </div>
+
         {/* State Selection */}
         <div>
           <label className="flex items-center gap-1.5 font-medium text-slate-300 mb-1">
@@ -161,6 +189,86 @@ export default function ProfileSimulator({ profile, onProfileChange, language }:
               <option key={c.value} value={c.value}>{t(c.labelKey, language)}</option>
             ))}
           </select>
+        </div>
+
+        {/* Additional scheme-specific facts */}
+        <div className="pt-2 border-t border-border space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-300">{t("sim_ration_card", language)}</span>
+            <select
+              value={toTriState(profile.has_ration_card)}
+              onChange={(e) => handleChange("has_ration_card", fromTriState(e.target.value))}
+              className="bg-slate-900 border border-border rounded-md px-2 py-1 text-xs text-slate-200 outline-none focus:ring-1 focus:ring-sky-500"
+            >
+              <option value="unknown">{t("sim_unknown", language)}</option>
+              <option value="yes">{t("sim_yes", language)}</option>
+              <option value="no">{t("sim_no", language)}</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-300">{t("sim_rural", language)}</span>
+            <select
+              value={toTriState(profile.is_rural)}
+              onChange={(e) => handleChange("is_rural", fromTriState(e.target.value))}
+              className="bg-slate-900 border border-border rounded-md px-2 py-1 text-xs text-slate-200 outline-none focus:ring-1 focus:ring-sky-500"
+            >
+              <option value="unknown">{t("sim_unknown", language)}</option>
+              <option value="yes">{t("sim_rural_option", language)}</option>
+              <option value="no">{t("sim_urban_option", language)}</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-300">{t("sim_owns_house", language)}</span>
+            <select
+              value={toTriState(profile.owns_house)}
+              onChange={(e) => handleChange("owns_house", fromTriState(e.target.value))}
+              className="bg-slate-900 border border-border rounded-md px-2 py-1 text-xs text-slate-200 outline-none focus:ring-1 focus:ring-sky-500"
+            >
+              <option value="unknown">{t("sim_unknown", language)}</option>
+              <option value="yes">{t("sim_yes", language)}</option>
+              <option value="no">{t("sim_no", language)}</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-300">{t("sim_business_plan", language)}</span>
+            <select
+              value={toTriState(profile.has_business_plan)}
+              onChange={(e) => handleChange("has_business_plan", fromTriState(e.target.value))}
+              className="bg-slate-900 border border-border rounded-md px-2 py-1 text-xs text-slate-200 outline-none focus:ring-1 focus:ring-sky-500"
+            >
+              <option value="unknown">{t("sim_unknown", language)}</option>
+              <option value="yes">{t("sim_yes", language)}</option>
+              <option value="no">{t("sim_no", language)}</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-300">{t("sim_govt_employee", language)}</span>
+            <select
+              value={toTriState(profile.is_government_employee)}
+              onChange={(e) => handleChange("is_government_employee", fromTriState(e.target.value))}
+              className="bg-slate-900 border border-border rounded-md px-2 py-1 text-xs text-slate-200 outline-none focus:ring-1 focus:ring-sky-500"
+            >
+              <option value="unknown">{t("sim_unknown", language)}</option>
+              <option value="yes">{t("sim_yes", language)}</option>
+              <option value="no">{t("sim_no", language)}</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <span className="font-medium text-slate-300">{t("sim_family_beneficiaries", language)}</span>
+            <input
+              type="number"
+              min="0"
+              max="20"
+              value={profile.family_beneficiary_count ?? 0}
+              onChange={(e) => handleChange("family_beneficiary_count", parseInt(e.target.value) || 0)}
+              className="w-16 bg-slate-900 border border-border rounded-md px-2 py-1 text-xs text-slate-200 outline-none focus:ring-1 focus:ring-sky-500"
+            />
+          </div>
         </div>
 
         {/* Switches / Checkboxes */}

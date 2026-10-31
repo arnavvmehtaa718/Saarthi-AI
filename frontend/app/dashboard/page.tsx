@@ -16,8 +16,43 @@ import AnalyticsDashboard from "../../components/dashboard/AnalyticsDashboard";
 import SchemeCompare from "../../components/dashboard/SchemeCompare";
 import { t, Language } from "../../lib/translations";
 import { API_BASE_URL } from "../../lib/config";
+import type {
+  AnalyticsData,
+  ChatMessage,
+  CompareScheme,
+  EligibilityCode,
+  ProviderStatus,
+  SchemeDetail,
+  SchemeSummary,
+  TimelineEvent,
+} from "../../lib/types";
 
 type ActiveTabType = "dashboard" | "agent" | "explorer" | "vault" | "compare" | "timeline";
+
+const STATUS_KEYS = {
+  Eligible: "status_eligible",
+  "Potentially Eligible": "status_potentially_eligible",
+  "Insufficient Information": "status_insufficient",
+  "Not Eligible": "status_not_eligible",
+} as const;
+
+function normalizeStatus(scheme: Pick<SchemeSummary, "eligibility_code" | "eligibility_status">): EligibilityCode {
+  const raw = scheme?.eligibility_code || scheme?.eligibility_status || "";
+  if (Object.prototype.hasOwnProperty.call(STATUS_KEYS, raw)) {
+    return raw as EligibilityCode;
+  }
+  if (raw.includes("Potentially") || raw.includes("संभावित")) return "Potentially Eligible";
+  if (raw.includes("Insufficient") || raw.includes("अपर्याप्त")) return "Insufficient Information";
+  if (raw.includes("Not Eligible") || raw.includes("पात्र नहीं")) return "Not Eligible";
+  return "Eligible";
+}
+
+const STATUS_BADGE_CLASS: Record<EligibilityCode, string> = {
+  Eligible: "bg-emerald-500/10 text-emerald-400",
+  "Potentially Eligible": "bg-sky-500/10 text-sky-400",
+  "Insufficient Information": "bg-amber-500/10 text-amber-400",
+  "Not Eligible": "bg-rose-500/10 text-rose-400",
+};
 
 export default function DashboardPage() {
   const router = useRouter();
@@ -45,30 +80,51 @@ export default function DashboardPage() {
     owns_land: false,
     land_area_hectares: 0,
     is_disabled: false,
-    disability_percentage: 0
+    disability_percentage: 0,
+    has_ration_card: null,
+    is_rural: null,
+    owns_house: null,
+    family_beneficiary_count: 0,
+    has_business_plan: null,
+    is_government_employee: null
   });
 
-  const [schemes, setSchemes] = useState<any[]>([]);
+  const [schemes, setSchemes] = useState<SchemeSummary[]>([]);
   const [vaultDocs, setVaultDocs] = useState<VaultDocument[]>([]);
-  const [selectedScheme, setSelectedScheme] = useState<any | null>(null);
-  const [analytics, setAnalytics] = useState<any>({
+  const [selectedScheme, setSelectedScheme] = useState<SchemeDetail | null>(null);
+  const [analytics, setAnalytics] = useState<AnalyticsData>({
     unlocked_benefit_amount: 0,
+    estimated_benefit_amount: 0,
     schemes_discovered_count: 0,
+    schemes_evaluated_count: 0,
+    status_breakdown: {
+      Eligible: 0,
+      "Potentially Eligible": 0,
+      "Insufficient Information": 0,
+      "Not Eligible": 0
+    },
+    benefit_breakdown: [],
     pending_documents_count: 0,
+    documents_count: 0,
     upcoming_deadlines_count: 0,
-    success_rate: 85,
+    success_rate: null,
+    applied_count: 0,
+    approved_count: 0,
     alerts: [],
     timeline_events: []
   });
+  const [providerStatus, setProviderStatus] = useState<ProviderStatus | null>(null);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // Compare schemes list
   const [compareIds, setCompareIds] = useState<number[]>([]);
-  const [compareData, setCompareData] = useState<any[]>([]);
+  const [compareData, setCompareData] = useState<CompareScheme[]>([]);
   const [showCompareModal, setShowCompareModal] = useState<boolean>(false);
   const [showSosModal, setShowSosModal] = useState<boolean>(false);
 
   // Chat States
-  const [chatMessages, setChatMessages] = useState<any[]>([]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState<string>("");
   const [chatLoading, setChatLoading] = useState<boolean>(false);
   const [agentLog, setAgentLog] = useState<string>(t("agent_idle", "en"));
@@ -84,9 +140,19 @@ export default function DashboardPage() {
   }, [router]);
 
   // Load and reload all data
-  const loadAllData = async (activeToken: string, currentLang: string = language) => {
+  const loadAllData = async (activeToken: string, currentLang: Language = language) => {
+    setLoading(true);
+    setLoadError(null);
     try {
       const headers = { Authorization: `Bearer ${activeToken}` };
+
+      // AI provider status (public endpoint)
+      try {
+        const aiRes = await fetch(`${API_BASE_URL}/ai/status`);
+        if (aiRes.ok) setProviderStatus(await aiRes.json());
+      } catch (err) {
+        console.error("Error fetching AI status:", err);
+      }
 
       // 1. Fetch Profile
       const profRes = await fetch(`${API_BASE_URL}/profile`, { headers });
@@ -140,6 +206,9 @@ export default function DashboardPage() {
 
     } catch (err) {
       console.error("Error loading dashboard data:", err);
+      setLoadError(t("load_error", currentLang));
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -205,12 +274,9 @@ export default function DashboardPage() {
   const loadSchemeDetail = async (schemeId: number, activeToken: string, currentLang: string = language) => {
     try {
       const headers = { Authorization: `Bearer ${activeToken}` };
-      const compRes = await fetch(`${API_BASE_URL}/schemes/compare?ids=${schemeId}&lang=${currentLang}`, { headers });
-      if (compRes.ok) {
-        const detail = await compRes.json();
-        if (detail.length > 0) {
-          setSelectedScheme(detail[0]);
-        }
+      const detailRes = await fetch(`${API_BASE_URL}/schemes/${schemeId}?lang=${currentLang}`, { headers });
+      if (detailRes.ok) {
+        setSelectedScheme(await detailRes.json());
       }
     } catch (err) {
       console.error("Error loading scheme details:", err);
@@ -273,7 +339,7 @@ export default function DashboardPage() {
       if (selectedScheme) {
         loadSchemeDetail(selectedScheme.id, token);
       }
-    } catch (err: any) {
+    } catch (err) {
       throw err;
     }
   };
@@ -295,6 +361,31 @@ export default function DashboardPage() {
       }
     } catch (err) {
       console.error("Failed to delete document:", err);
+    }
+  };
+
+  // Download Vault Document through the authenticated endpoint
+  const handleDocDownload = async (id: number) => {
+    if (!token) return;
+    try {
+      const res = await fetch(`${API_BASE_URL}/vault/${id}/file`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (!res.ok) throw new Error("Download failed");
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") || "";
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const fileName = match ? match[1] : `document-${id}`;
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = fileName;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Failed to download document:", err);
     }
   };
 
@@ -334,7 +425,7 @@ export default function DashboardPage() {
     setChatInput("");
     
     // Add user message locally first
-    const tempUserMsg = { id: Date.now(), role: "user", content: msgText };
+    const tempUserMsg: ChatMessage = { id: Date.now(), role: "user", content: msgText };
     setChatMessages((prev) => [...prev, tempUserMsg]);
 
     try {
@@ -355,7 +446,7 @@ export default function DashboardPage() {
         const data = await res.json();
         
         // Add assistant message and agent logging
-        const tempAssistantMsg = { 
+        const tempAssistantMsg: ChatMessage = {
           id: Date.now() + 1, 
           role: "assistant", 
           content: data.assistant_reply,
@@ -363,24 +454,33 @@ export default function DashboardPage() {
         };
         setChatMessages((prev) => [...prev, tempAssistantMsg]);
         setAgentLog(data.agent_collaboration_log || t("agent_idle", language));
+        if (data.ai) setProviderStatus(data.ai);
         
         // Speak out the assistant reply if voice output is active
         if (voiceOutputActive) {
           speakAloud(data.assistant_reply);
         }
 
-        // Auto reload profile simulator & schemes matches if agents altered them
+        // Auto reload profile simulator & full recommendations if agents altered them
         if (data.profile) {
           setProfile(data.profile);
         }
-        if (data.schemes) {
-          setSchemes(data.schemes);
+
+        const headers = { Authorization: `Bearer ${token}` };
+        const recomRes = await fetch(`${API_BASE_URL}/schemes/recommendations?lang=${language}`, { headers });
+        if (recomRes.ok) {
+          const recomData = await recomRes.json();
+          setSchemes(recomData);
+          const nextSelected = selectedScheme
+            ? recomData.find((item: SchemeSummary) => item.id === selectedScheme.id) || recomData[0]
+            : recomData[0];
+          if (nextSelected) {
+            await loadSchemeDetail(nextSelected.id, token, language);
+          }
         }
-        
+
         // Refresh analytics in background
-        const analyRes = await fetch(`${API_BASE_URL}/analytics`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const analyRes = await fetch(`${API_BASE_URL}/analytics`, { headers });
         if (analyRes.ok) {
           const analyData = await analyRes.json();
           setAnalytics(analyData);
@@ -428,6 +528,19 @@ export default function DashboardPage() {
     compare: "header_compare",
     timeline: "header_timeline",
   } as const;
+
+  const providerLabel = !providerStatus
+    ? null
+    : providerStatus.mode === "live"
+      ? t("provider_live", language)
+      : providerStatus.mode === "mock"
+        ? t("provider_mock", language)
+        : t("provider_unconfigured", language);
+  const providerClass = providerStatus?.mode === "live"
+    ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+    : providerStatus?.mode === "mock"
+      ? "border-amber-500/30 bg-amber-500/10 text-amber-400"
+      : "border-rose-500/30 bg-rose-500/10 text-rose-400";
 
   return (
     <main className="min-h-screen bg-[#070b13] text-slate-200 flex overflow-hidden font-sans">
@@ -528,6 +641,20 @@ export default function DashboardPage() {
               </div>
             )}
 
+            {/* AI provider status */}
+            {providerLabel && (
+              <div
+                className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-md border font-mono text-[10px] ${providerClass}`}
+                title={providerStatus?.privacy || providerStatus?.model || ""}
+              >
+                <Sparkles className="h-3 w-3" />
+                <span>{providerLabel}</span>
+                {providerStatus?.model && (
+                  <span className="text-slate-400 font-sans">· {providerStatus.model}</span>
+                )}
+              </div>
+            )}
+
             {/* Exit button */}
             <button
               onClick={handleLogout}
@@ -552,6 +679,21 @@ export default function DashboardPage() {
               if (!active) window.speechSynthesis.cancel();
             }}
           />
+
+          {loadError && (
+            <div className="flex items-center justify-between gap-3 rounded-lg border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-xs text-rose-300">
+              <span className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4" />
+                {loadError}
+              </span>
+              <button
+                onClick={() => token && loadAllData(token, language)}
+                className="font-semibold text-rose-200 hover:text-white"
+              >
+                {t("retry", language)}
+              </button>
+            </div>
+          )}
 
           {/* Render Tab Contents */}
           {activeTab === "dashboard" && (
@@ -680,9 +822,19 @@ export default function DashboardPage() {
                     </h3>
                   </div>
 
+                  {schemes.length === 0 && (
+                    <div className="flex flex-col items-center justify-center py-12 text-slate-500">
+                      <RefreshCcw className={`h-8 w-8 mb-2 stroke-1 ${loading ? "animate-spin text-sky-500" : "opacity-50"}`} />
+                      <p className="text-[11px]">
+                        {loading ? t("loading", language) : t("chart_empty", language)}
+                      </p>
+                    </div>
+                  )}
+
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     {schemes.map((sch) => {
                       const isSelected = selectedScheme && selectedScheme.id === sch.id;
+                      const statusCode = normalizeStatus(sch);
                       return (
                         <div
                           key={sch.id}
@@ -696,15 +848,9 @@ export default function DashboardPage() {
                           <div>
                             <div className="flex justify-between items-start mb-2">
                               <span
-                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
-                                  sch.eligibility_status === "Eligible" || sch.eligibility_status === "पात्र (Eligible)"
-                                    ? "bg-emerald-500/10 text-emerald-400"
-                                    : sch.eligibility_status === "Likely Eligible" || sch.eligibility_status === "संभावित पात्र (Likely Eligible)"
-                                    ? "bg-sky-500/10 text-sky-400"
-                                    : "bg-amber-500/10 text-amber-400"
-                                }`}
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_BADGE_CLASS[statusCode]}`}
                               >
-                                {sch.eligibility_status}
+                                {t(STATUS_KEYS[statusCode], language)}
                               </span>
                               <input
                                 type="checkbox"
@@ -750,6 +896,9 @@ export default function DashboardPage() {
                           {t("checklist_title", language)}
                         </span>
                         <h3 className="text-sm font-bold text-white">{selectedScheme.title}</h3>
+                        <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${STATUS_BADGE_CLASS[normalizeStatus(selectedScheme)]}`}>
+                          {t(STATUS_KEYS[normalizeStatus(selectedScheme)], language)}
+                        </span>
                       </div>
                       <div className="flex items-center gap-3">
                         <span className="text-xs font-bold text-slate-400">
@@ -796,7 +945,7 @@ export default function DashboardPage() {
                             {t("verification_checklist", language)}
                           </h4>
                           <div className="space-y-1.5">
-                            {selectedScheme.checklist?.map((item: any, idx: number) => (
+                            {selectedScheme.checklist?.map((item, idx) => (
                               <div
                                 key={idx}
                                 className="flex justify-between items-center p-2 rounded bg-slate-950/30 border border-slate-800/50"
@@ -825,7 +974,7 @@ export default function DashboardPage() {
                               {t("timeline_label", language)} (~{selectedScheme.timeline.estimated_days} {t("days_to_approval", language)})
                             </h4>
                             <div className="space-y-2 border-l-2 border-slate-800 pl-4 py-1 ml-2">
-                              {selectedScheme.timeline.stages?.map((stg: any, idx: number) => (
+                              {selectedScheme.timeline.stages?.map((stg, idx) => (
                                 <div key={idx} className="relative">
                                   <div className="absolute top-1 -left-[21px] w-2.5 h-2.5 rounded-full bg-sky-500" />
                                   <div className="font-bold text-slate-200">{stg.name}</div>
@@ -836,6 +985,30 @@ export default function DashboardPage() {
                           </div>
                         )}
                       </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-800/80 space-y-2 text-[10px] text-slate-400">
+                      {(selectedScheme.missing_information?.length ?? 0) > 0 && (
+                        <div>
+                          <span className="font-semibold text-amber-400">{t("missing_info_title", language)}: </span>
+                          <span>{(selectedScheme.missing_information ?? []).join(", ").replace(/_/g, " ")}</span>
+                        </div>
+                      )}
+                      {selectedScheme.source_url && (
+                        <a
+                          href={selectedScheme.source_url}
+                          target="_blank"
+                          rel="noreferrer noopener"
+                          className="inline-flex items-center gap-1 text-sky-400 hover:text-sky-300 font-semibold"
+                        >
+                          <BookOpen className="h-3 w-3" />
+                          {t("official_source", language)}
+                        </a>
+                      )}
+                      <p className="leading-relaxed">
+                        <span className="font-semibold text-slate-300">{t("disclaimer_label", language)}: </span>
+                        {selectedScheme.disclaimer || selectedScheme.source_note}
+                      </p>
                     </div>
                   </GlassCard>
                 )}
@@ -849,6 +1022,7 @@ export default function DashboardPage() {
                 documents={vaultDocs}
                 onUpload={handleDocUpload}
                 onDelete={handleDocDelete}
+                onDownload={handleDocDownload}
                 language={language}
               />
             </div>
@@ -920,7 +1094,7 @@ export default function DashboardPage() {
                   </div>
                 ) : (
                   <div className="relative border-l-2 border-slate-800 pl-6 space-y-6 py-2 ml-4">
-                    {analytics.timeline_events?.map((ev: any, idx: number) => (
+                    {analytics.timeline_events?.map((ev: TimelineEvent, idx) => (
                       <div key={idx} className="relative text-xs">
                         <div className="absolute top-1 -left-[31px] w-4 h-4 rounded-full border border-sky-500 bg-[#070b13] flex items-center justify-center">
                           <div className={`w-1.5 h-1.5 rounded-full ${ev.completed ? "bg-emerald-500" : "bg-sky-500"}`} />

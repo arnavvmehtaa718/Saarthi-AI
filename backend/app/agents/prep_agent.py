@@ -1,100 +1,150 @@
-from typing import Dict, Any, List
 import json
+from typing import Any, Dict, List, Optional
+
 from app.agents.base import BaseAgent
 from app.models import Scheme, UserProfile
+from app.services.privacy import redact_pii
+
 
 class ApplicationPreparationAgent(BaseAgent):
     def __init__(self):
         super().__init__(
             name="Application Preparation Agent",
-            description="Prepares step-by-step checklists, cover letters, and submission timelines for applying to welfare schemes."
+            description="Prepares checklists, cover letters, and submission timelines for scheme applications.",
         )
 
-    def prepare_application_kit(self, profile: UserProfile, scheme: Scheme) -> Dict[str, Any]:
-        """
-        Generate submission guide, cover letter, order of tasks, and approval timeline.
-        """
-        steps = scheme.steps if scheme.steps else [
-            "Gather required certificates.",
-            "Register on the benefits portal.",
-            "Fill details and upload documentation.",
-            "Submit the application and record reference ID."
+    def prepare_application_kit(
+        self,
+        profile: UserProfile,
+        scheme: Scheme,
+        document_result: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        steps = scheme.steps or [
+            "Gather the required certificates.",
+            "Register on the official benefits portal.",
+            "Fill in the details and upload the required documents.",
+            "Submit the application and save the reference number.",
         ]
-        
-        # Format custom cover letter
+
+        applicant_name = (getattr(profile, "full_name", None) or "").strip() or "[Applicant Name]"
+        state = getattr(profile, "state", None) or "[State]"
+        occupation = getattr(profile, "occupation", None) or "[Occupation]"
+        income = getattr(profile, "annual_income", None)
+        income_text = f"₹{income:,.0f}" if income is not None else "[annual income]"
+
+        checklist = (document_result or {}).get("checklist", [])
+        missing = (document_result or {}).get("missing", [])
+        if checklist:
+            missing_labels = [
+                item["required_label"]
+                for item in checklist
+                if item.get("status") in {"Missing", "Expired"}
+            ]
+            if missing_labels:
+                document_paragraph = (
+                    "The following documents are still pending and will be submitted as soon as they are available: "
+                    + ", ".join(missing_labels)
+                    + "."
+                )
+            else:
+                document_paragraph = (
+                    "The required documents currently available in my vault are enclosed for verification."
+                )
+        else:
+            document_paragraph = (
+                "I will upload the documents listed in the scheme checklist before submitting the application."
+            )
+
         cover_letter = (
-            f"To,\n"
-            f"The Competent Authority / Scheme Officer,\n"
-            f"Government of India / Department of {scheme.department}\n\n"
-            f"Subject: Application for registration under {scheme.title}\n\n"
-            f"Respected Sir/Madam,\n\n"
-            f"I am writing to formally apply for the benefits under the '{scheme.title}' scheme. "
-            f"My name is {profile.gender or 'Applicant'}, residing in state {profile.state}. "
-            f"I confirm that my current occupation is '{profile.occupation}' and my annual household income is "
-            f"₹{profile.annual_income:,.2f}, which aligns with the eligibility thresholds defined for this program.\n\n"
-            f"I have uploaded all the required documents, including my Aadhaar card and relevant certificate credentials. "
-            f"Kindly review my application and initiate the registration process.\n\n"
-            f"Thanking you,\n"
-            f"Sincerely,\n"
-            f"[Applicant Name / Signature]\n"
-            f"Email: [User Email]\n"
-            f"Mobile: [User Mobile]"
+            "To,\n"
+            "The Competent Authority / Scheme Officer,\n"
+            f"Department of {scheme.department}\n\n"
+            f"Subject: Application for {scheme.title}\n\n"
+            "Respected Sir/Madam,\n\n"
+            f"I am {applicant_name}, residing in {state}. I am applying for the benefits under "
+            f"the '{scheme.title}' scheme. My current occupation is {occupation} and my annual "
+            f"household income is {income_text}.\n\n"
+            f"{document_paragraph}\n\n"
+            "Kindly review my application and guide me if any additional document or clarification "
+            "is required. I understand that eligibility and approval are decided only by the "
+            "concerned department after official verification.\n\n"
+            "Thanking you,\n"
+            "Sincerely,\n"
+            f"{applicant_name}\n"
+            "Email: [User Email]\n"
+            "Mobile: [User Mobile]"
         )
-        
-        # Build timeline
-        # Complex schemes take longer, simple schemes are fast
-        timeline = {}
+
         if scheme.complexity == "Low":
             timeline = {
                 "estimated_days": 10,
+                "note": "Indicative only; actual processing depends on the department.",
                 "stages": [
-                    {"name": "Online Submission & Biometric Link", "duration": "1-2 days"},
-                    {"name": "Local Authority Validation", "duration": "3-5 days"},
-                    {"name": "Direct Benefit Account Disbursement", "duration": "3 days"}
-                ]
+                    {"name": "Online submission", "duration": "1-2 days"},
+                    {"name": "Local authority validation", "duration": "3-5 days"},
+                    {"name": "Benefit disbursement", "duration": "3 days"},
+                ],
             }
         elif scheme.complexity == "High":
             timeline = {
                 "estimated_days": 45,
+                "note": "Indicative only; loan and verification timelines vary by bank and district.",
                 "stages": [
-                    {"name": "Application & Business Proposal Submission", "duration": "7 days"},
-                    {"name": "Field Officer Verification & Interview", "duration": "14 days"},
-                    {"name": "District Committee Approvals", "duration": "14 days"},
-                    {"name": "Bank Disbursal & Collateral Exception Waiver", "duration": "10 days"}
-                ]
+                    {"name": "Application and proposal submission", "duration": "7 days"},
+                    {"name": "Field verification / interview", "duration": "14 days"},
+                    {"name": "Committee approvals", "duration": "14 days"},
+                    {"name": "Bank disbursal", "duration": "10 days"},
+                ],
             }
-        else: # Medium
+        else:
             timeline = {
                 "estimated_days": 21,
+                "note": "Indicative only; actual processing depends on the department.",
                 "stages": [
-                    {"name": "Application & Form Validation", "duration": "4 days"},
-                    {"name": "Block Level Verification", "duration": "7 days"},
-                    {"name": "State Node Disbursal Approval", "duration": "10 days"}
-                ]
+                    {"name": "Application and form validation", "duration": "4 days"},
+                    {"name": "Block-level verification", "duration": "7 days"},
+                    {"name": "State nodal approval", "duration": "10 days"},
+                ],
             }
 
-        # Use AI-powered writing if available
         if self.use_real_ai:
             try:
+                safe_profile = redact_pii(
+                    json.dumps(
+                        {
+                            "full_name": applicant_name,
+                            "state": state,
+                            "occupation": occupation,
+                            "annual_income": income,
+                            "category": getattr(profile, "category", None),
+                        },
+                        default=str,
+                    )
+                )
                 system_instruction = (
-                    "You are an expert caseworker. Write a highly professional cover letter "
-                    "tailored to the citizen profile and the scheme. Customize the steps and "
-                    "timeline instructions to be highly specific."
+                    "You are an Indian government-benefits caseworker. Write a concise, formal cover letter. "
+                    "Use only the supplied facts. Never claim that documents are uploaded if they are missing. "
+                    "Never promise approval. Include a line that the department makes the final decision. "
+                    "Return only the letter text."
                 )
                 prompt = (
-                    f"Citizen Profile: {json.dumps(profile.__dict__, default=str)}\n"
-                    f"Scheme Details: {scheme.title} (Complexity: {scheme.complexity})\n"
-                    f"Generate a customized cover letter, a step-by-step checklist, and timeline stages."
+                    f"Citizen facts: {safe_profile}\n"
+                    f"Scheme: {scheme.title}\nDepartment: {scheme.department}\n"
+                    f"Missing/expired documents: {', '.join(missing) if missing else 'none recorded'}\n"
+                    f"Draft letter to improve:\n{cover_letter}"
                 )
-                ai_resp = self.run_llm(prompt, system_instruction)
-                # Keep local structured structure but replace letter text if desired
-                cover_letter = ai_resp
+                ai_letter = self.run_llm(prompt, system_instruction).strip()
+                if ai_letter:
+                    cover_letter = ai_letter
             except Exception:
-                pass # fallback
+                pass
 
         return {
             "steps": steps,
             "cover_letter": cover_letter,
             "timeline": timeline,
-            "complexity": scheme.complexity
+            "complexity": scheme.complexity,
+            "checklist": checklist,
+            "missing_documents": missing,
+            "disclaimer": "Eligibility and approval are decided by the concerned department after official verification.",
         }

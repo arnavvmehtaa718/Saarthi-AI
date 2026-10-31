@@ -41,15 +41,21 @@ const translations = {
   },
 
   // Analytics KPIs
-  kpi_benefits: { en: "Benefits Unlocked", hi: "लाभ अनलॉक" },
+  kpi_benefits: { en: "Estimated Benefits", hi: "अनुमानित लाभ" },
+  kpi_benefits_note: {
+    en: "Estimated maximum value. Not a guarantee of payment or approval.",
+    hi: "अनुमानित अधिकतम मूल्य। भुगतान या स्वीकृति की गारंटी नहीं।"
+  },
   kpi_matches: { en: "Matches Found", hi: "मिलान पाए गए" },
   kpi_schemes: { en: "Schemes", hi: "योजनाएं" },
   kpi_missing_docs: { en: "Missing Documents", hi: "लापता दस्तावेज़" },
   kpi_files: { en: "Files", hi: "फाइलें" },
   kpi_milestones: { en: "Upcoming Milestones", hi: "आगामी मील के पत्थर" },
   kpi_deadlines: { en: "Deadlines", hi: "समय सीमा" },
-  chart_title: { en: "Financial Aid Value Breakdown", hi: "वित्तीय सहायता मूल्य विवरण" },
+  chart_title: { en: "Estimated Value by Scheme", hi: "योजना के अनुसार अनुमानित मूल्य" },
   chart_empty: { en: "No active benefit schemes matched yet.", hi: "अभी तक कोई सक्रिय लाभ योजना मिलान नहीं हुई।" },
+  chart_benefit_amount: { en: "Estimated value", hi: "अनुमानित मूल्य" },
+  status_breakdown_title: { en: "Eligibility Breakdown", hi: "पात्रता विवरण" },
   alerts_title: { en: "Critical Alerts & Deadlines", hi: "महत्वपूर्ण अलर्ट और समय सीमा" },
   alerts_clear: { en: "All alerts verified! No upcoming expirations.", hi: "सभी अलर्ट सत्यापित! कोई आगामी समाप्ति नहीं।" },
 
@@ -76,12 +82,17 @@ const translations = {
   cover_letter_title: { en: "Cover Letter Draft", hi: "कवर लेटर मसौदा" },
   verification_checklist: { en: "Verification Checklist", hi: "सत्यापन चेकलिस्ट" },
   readiness_label: { en: "Readiness:", hi: "तैयारी:" },
+  missing_info_title: { en: "Information still needed", hi: "अभी आवश्यक जानकारी" },
+  official_source: { en: "Official source", hi: "आधिकारिक स्रोत" },
+  disclaimer_label: { en: "Important", hi: "महत्वपूर्ण" },
   timeline_label: { en: "Estimated Timeline", hi: "अनुमानित समयरेखा" },
   days_to_approval: { en: "days to approval", hi: "अनुमोदन तक दिन" },
   duration_label: { en: "Duration:", hi: "अवधि:" },
   updates_instant: { en: "Updates matched instantly", hi: "अपडेट तुरंत मिलान" },
 
   // Profile Simulator labels
+  sim_name: { en: "Full Name (optional)", hi: "पूरा नाम (वैकल्पिक)" },
+  sim_name_placeholder: { en: "Used only in your application draft", hi: "केवल आपके आवेदन मसौदे में उपयोग" },
   sim_state: { en: "Residency (State)", hi: "निवास (राज्य)" },
   sim_age: { en: "Age", hi: "आयु" },
   sim_years: { en: "Years", hi: "वर्ष" },
@@ -95,6 +106,17 @@ const translations = {
   sim_disabled: { en: "Person with Disability?", hi: "विकलांग व्यक्ति?" },
   sim_disability_pct: { en: "Disability Percentage", hi: "विकलांगता प्रतिशत" },
   sim_severity: { en: "severity", hi: "गंभीरता" },
+  sim_ration_card: { en: "Has a Ration Card?", hi: "क्या राशन कार्ड है?" },
+  sim_rural: { en: "Residence Type", hi: "निवास प्रकार" },
+  sim_rural_option: { en: "Rural", hi: "ग्रामीण" },
+  sim_urban_option: { en: "Urban", hi: "शहरी" },
+  sim_owns_house: { en: "Owns a Pucca House?", hi: "क्या पक्का घर है?" },
+  sim_family_beneficiaries: { en: "Family Members Already Covered", hi: "पहले से लाभान्वित परिवार सदस्य" },
+  sim_business_plan: { en: "Has a Business Plan?", hi: "क्या व्यवसाय योजना है?" },
+  sim_govt_employee: { en: "Government Employee?", hi: "सरकारी कर्मचारी?" },
+  sim_unknown: { en: "Not sure", hi: "पता नहीं" },
+  sim_yes: { en: "Yes", hi: "हाँ" },
+  sim_no: { en: "No", hi: "नहीं" },
 
   // Vault tab
   vault_title: { en: "Citizen Document Vault", hi: "नागरिक दस्तावेज़ वॉल्ट" },
@@ -110,6 +132,14 @@ const translations = {
   vault_category: { en: "Category", hi: "श्रेणी" },
   vault_metadata: { en: "Metadata Extracted", hi: "मेटाडेटा निकाला गया" },
   vault_actions: { en: "Actions", hi: "कार्रवाई" },
+  vault_confidence: { en: "OCR confidence", hi: "OCR विश्वास" },
+  vault_review_required: { en: "Needs manual review", hi: "मैन्युअल समीक्षा आवश्यक" },
+  vault_verified: { en: "Extraction looks clear", hi: "निष्कर्षण स्पष्ट लगता है" },
+  vault_download: { en: "Download", hi: "डाउनलोड" },
+  vault_private_note: {
+    en: "Files are private to your account. Raw document bytes are never sent to a hosted AI provider.",
+    hi: "फ़ाइलें केवल आपके खाते के लिए निजी हैं। कच्चे दस्तावेज़ बाइट्स किसी होस्टेड AI प्रदाता को नहीं भेजे जाते।"
+  },
 
   // Compare tab
   compare_title: { en: "Compare Matched Schemes", hi: "मिलान योजनाओं की तुलना करें" },
@@ -160,6 +190,10 @@ const translations = {
   // Scheme statuses
   status_verified: { en: "Verified", hi: "सत्यापित" },
   status_missing: { en: "Missing", hi: "लापता" },
+  status_eligible: { en: "Eligible", hi: "पात्र" },
+  status_potentially_eligible: { en: "Potentially Eligible", hi: "संभावित पात्र" },
+  status_insufficient: { en: "Insufficient Information", hi: "अपर्याप्त जानकारी" },
+  status_not_eligible: { en: "Not Eligible", hi: "पात्र नहीं" },
 
   // Document categories
   cat_other: { en: "Other / Unclassified", hi: "अन्य / अवर्गीकृत" },
@@ -172,6 +206,10 @@ const translations = {
   cat_land: { en: "Land Record / Khatauni", hi: "भूमि रिकॉर्ड / खतौनी" },
   cat_disability: { en: "Disability Certificate", hi: "दिव्यांगता प्रमाण पत्र" },
   cat_education: { en: "Marksheet / Certificate", hi: "मार्कशीट / प्रमाण पत्र" },
+  cat_ration: { en: "Ration Card", hi: "राशन कार्ड" },
+  cat_voter: { en: "Voter ID", hi: "मतदाता पहचान पत्र" },
+  cat_business: { en: "Business Proof", hi: "व्यवसाय प्रमाण" },
+  cat_vendor: { en: "Vendor Certificate", hi: "विक्रेता प्रमाण पत्र" },
 
   // States
   state_all: { en: "All", hi: "सभी" },
@@ -199,6 +237,14 @@ const translations = {
   cat_sc: { en: "SC", hi: "अनुसूचित जाति" },
   cat_st: { en: "ST", hi: "अनुसूचित जनजाति" },
   cat_ews: { en: "EWS", hi: "आर्थिक रूप से कमजोर वर्ग" },
+
+  // Provider status and shared states
+  provider_live: { en: "Live AI", hi: "लाइव AI" },
+  provider_mock: { en: "Mock / rules", hi: "मॉक / नियम" },
+  provider_unconfigured: { en: "AI not configured", hi: "AI कॉन्फ़िगर नहीं" },
+  loading: { en: "Loading...", hi: "लोड हो रहा है..." },
+  load_error: { en: "Could not load data. Check the backend connection.", hi: "डेटा लोड नहीं हो सका। बैकएंड कनेक्शन जांचें।" },
+  retry: { en: "Retry", hi: "पुनः प्रयास" },
 
   // Misc
   scheme_saved_msg: {

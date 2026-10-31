@@ -4,6 +4,10 @@ from app.models import UserProfile, Scheme
 from app.agents.profile_agent import CitizenProfileAgent
 from app.agents.discovery_agent import SchemeDiscoveryAgent
 from app.agents.eligibility_agent import EligibilityVerificationAgent
+from app.agents.document_agent import DocumentIntelligenceAgent
+from app.models import Document
+from app.services.ocr import classify_and_extract_local
+from app.services.privacy import mask_aadhaar, mask_pan, redact_pii
 
 # Setup inline SQLite memory database for testing
 TEST_DATABASE_URL = "sqlite:///:memory:"
@@ -89,3 +93,95 @@ def test_eligibility_agent_rules():
     res_rich = elig_agent.verify(rich_profile, scheme)
     assert res_rich["status"] == "Not Eligible"
     assert res_rich["score"] == 10.0
+
+def _scheme(**rules):
+    return Scheme(
+        title="Rule Test Scheme",
+        description="Test",
+        department="Test",
+        ministry="Test",
+        benefit_type="Subsidy",
+        benefit_details="Test benefit",
+        eligibility_rules=rules,
+        required_documents=["aadhaar"],
+        eli15_explanation="Test",
+    )
+
+
+def test_unknown_optional_facts_produce_insufficient_information():
+    agent = EligibilityVerificationAgent()
+    scheme = _scheme(has_ration_card=True, is_rural=True)
+    profile = UserProfile(user_id=10, state="All", age=30, annual_income=100000)
+    result = agent.verify(profile, scheme)
+    assert result["status"] == "Insufficient Information"
+    assert "ration card status" in result["missing_information"]
+    assert "rural residence" in result["missing_information"]
+
+
+def test_critical_failure_is_not_upgraded_by_other_matches():
+    agent = EligibilityVerificationAgent()
+    scheme = _scheme(max_annual_income=100000, category_whitelist=["SC"])
+    profile = UserProfile(user_id=11, state="All", age=30, annual_income=500000, category="SC")
+    result = agent.verify(profile, scheme)
+    assert result["status"] == "Not Eligible"
+    assert result["score"] == 10.0
+
+
+def test_discovery_delegates_to_rule_engine():
+    agent = SchemeDiscoveryAgent()
+    scheme = _scheme(max_annual_income=100000)
+    profile = UserProfile(user_id=12, state="All", age=30, annual_income=500000)
+    ranked = agent.rank_schemes_for_profile(profile, [scheme])
+    assert ranked[0]["eligibility_status"] == "Not Eligible"
+    assert ranked[0]["eligibility_score"] == 10.0
+
+
+def test_profile_sc_does_not_match_school():
+    agent = CitizenProfileAgent()
+    profile = {"category": "General", "occupation": "Unemployed"}
+    updated = agent.extract_profile_from_text("I left school after class 10.", profile)
+    assert updated["category"] == "General"
+    assert updated["occupation"] == "Unemployed"
+
+
+def test_sensitive_ids_are_masked():
+    assert mask_aadhaar("1234 5678 9012") == "XXXX XXXX 9012"
+    assert mask_pan("ABCDE1234F") == "ABCDE****F"
+    redacted = redact_pii("Aadhaar 123456789012 PAN ABCDE1234F call 9876543210")
+    assert "123456789012" not in redacted
+    assert "ABCDE1234F" not in redacted
+    assert "9876543210" not in redacted
+
+
+def test_local_ocr_masks_aadhaar():
+    result = classify_and_extract_local(
+        "aadhaar.pdf",
+        "Government of India Aadhaar 1234 5678 9012 Name: Asha Devi",
+        mime_type="application/pdf",
+    )
+    assert result["category"] == "aadhaar"
+    assert result["document_id_number"] == "XXXX XXXX 9012"
+
+
+def test_document_agent_flags_review_and_missing():
+    agent = DocumentIntelligenceAgent()
+    scheme = _scheme()
+    scheme.required_documents = ["aadhaar", "income"]
+    docs = [
+        Document(
+            user_id=1,
+            file_name="aadhaar.png",
+            file_path="/tmp/aadhaar.png",
+            file_type="png",
+            category="aadhaar",
+            file_hash="x",
+            is_valid=True,
+            confidence=0.3,
+            review_required=True,
+        )
+    ]
+    result = agent.analyze_documents(docs, scheme)
+    statuses = {item["category"]: item["status"] for item in result["checklist"]}
+    assert statuses["aadhaar"] == "Needs Review"
+    assert statuses["income"] == "Missing"
+    assert result["readiness_score"] == 0.0

@@ -1,5 +1,6 @@
 import json
 from datetime import datetime
+from sqlalchemy import text
 from sqlmodel import SQLModel, create_engine, Session, select
 from app.core.config import settings
 from app.models import Scheme
@@ -10,9 +11,103 @@ engine = create_engine(
     connect_args={"check_same_thread": False} if settings.DATABASE_URL.startswith("sqlite") else {}
 )
 
+SOURCE_METADATA = {
+    "PM-KISAN (Pradhan Mantri Kisan Samman Nidhi)": (
+        "https://pmkisan.gov.in/",
+        "Official PM-KISAN portal. Verify current instalment and land-record rules before applying.",
+    ),
+    "Ayushman Bharat - Pradhan Mantri Jan Arogya Yojana (PM-JAY)": (
+        "https://pmjay.gov.in/",
+        "Official PM-JAY portal. Eligibility is based on SECC/NFSA and state verification.",
+    ),
+    "Pradhan Mantri Mudra Yojana (PMMY)": (
+        "https://www.udyamimitra.in/",
+        "Official Udyamimitra portal. Loan approval and category are decided by the lending bank.",
+    ),
+    "Post-Matric Scholarship Scheme for SC/ST/OBC Students": (
+        "https://scholarships.gov.in/",
+        "National Scholarship Portal. Deadlines and income limits are set for each academic year.",
+    ),
+    "Pradhan Mantri Awas Yojana - Gramin (PMAY-G)": (
+        "https://pmayg.nic.in/",
+        "Official PMAY-G portal. Beneficiary selection is done through Gram Sabha/SECC verification.",
+    ),
+    "Pradhan Mantri SVANidhi": (
+        "https://pmsvanidhi.mohua.gov.in/",
+        "Official PM SVANidhi portal. A Certificate of Vending or local recommendation is normally required.",
+    ),
+    "PM Vishwakarma Scheme": (
+        "https://pmvishwakarma.gov.in/",
+        "Official PM Vishwakarma portal. Verification is completed by local committees.",
+    ),
+    "Pradhan Mantri Garib Kalyan Anna Yojana (PMGKAY)": (
+        "https://nfsa.gov.in/",
+        "Official National Food Security Act portal. Ration-card entitlement is verified by the state.",
+    ),
+}
+
+LIGHTWEIGHT_MIGRATIONS = {
+    "userprofile": {
+        "full_name": "TEXT",
+        "has_ration_card": "BOOLEAN",
+        "is_rural": "BOOLEAN",
+        "owns_house": "BOOLEAN",
+        "family_beneficiary_count": "INTEGER",
+        "has_business_plan": "BOOLEAN",
+        "is_government_employee": "BOOLEAN",
+    },
+    "scheme": {
+        "source_url": "TEXT",
+        "source_note": "TEXT",
+        "effective_date": "TEXT",
+    },
+    "document": {
+        "confidence": "FLOAT DEFAULT 0",
+        "review_required": "BOOLEAN DEFAULT 0",
+    },
+}
+
+
+def run_lightweight_migrations():
+    """Add new columns to an existing SQLite database.
+
+    SQLModel.create_all() creates missing tables but never alters existing ones.
+    This keeps existing demo databases usable without a full migration stack.
+    """
+    if not settings.DATABASE_URL.startswith("sqlite"):
+        return
+    with engine.begin() as connection:
+        for table_name, columns in LIGHTWEIGHT_MIGRATIONS.items():
+            existing = {
+                row[1]
+                for row in connection.execute(text(f"PRAGMA table_info('{table_name}')")).fetchall()
+            }
+            if not existing:
+                continue
+            for column_name, column_type in columns.items():
+                if column_name not in existing:
+                    connection.execute(
+                        text(f'ALTER TABLE "{table_name}" ADD COLUMN "{column_name}" {column_type}')
+                    )
+
+
 def init_db():
     SQLModel.metadata.create_all(engine)
+    run_lightweight_migrations()
     seed_schemes()
+
+
+def apply_source_metadata(schemes):
+    for scheme in schemes:
+        metadata = SOURCE_METADATA.get(scheme.title)
+        if not metadata:
+            continue
+        if not scheme.source_url:
+            scheme.source_url = metadata[0]
+        if not scheme.source_note:
+            scheme.source_note = metadata[1]
+        if not scheme.application_url:
+            scheme.application_url = metadata[0]
 
 def get_session():
     with Session(engine) as session:
@@ -24,6 +119,9 @@ def seed_schemes():
         statement = select(Scheme)
         results = session.exec(statement).all()
         if results:
+            apply_source_metadata(results)
+            session.add_all(results)
+            session.commit()
             return  # Schemes already seeded
         
         schemes = [
@@ -250,5 +348,6 @@ def seed_schemes():
             )
         ]
         
+        apply_source_metadata(schemes)
         session.add_all(schemes)
         session.commit()

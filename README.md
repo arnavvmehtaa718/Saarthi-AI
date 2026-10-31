@@ -96,7 +96,7 @@ graph TD
     subgraph Services
         DocIntel --> |Hybrid OCR| OCRService[OCR Service]
         OCRService --> LocalScan[Local Regex & PyPDF Parser]
-        OCRService --> MultimodalAI[Gemini Vision Multimodal OCR]
+        OCRService --> MultimodalAI[Gemma 4 Vision Multimodal OCR]
     end
 ```
 
@@ -160,13 +160,32 @@ This project includes a **GitHub Actions CI Pipeline** configured in `.github/wo
    .\venv\Scripts\activate  # Windows
    pip install -r requirements.txt
    ```
-3. Set environment variables in the `.env` file:
+3. Copy `backend/.env.example` to `backend/.env` and fill in your values. The backend loads this file automatically:
    ```
    DATABASE_URL=sqlite:///./saarthi.db
-   SECRET_KEY=super-secret-key-change-it-in-production-123456789
+   SECRET_KEY=replace-with-a-long-random-string
    ENVIRONMENT=development
-   GEMINI_API_KEY=your_gemini_api_key  # Optional: for live Gemini LLM & Vision OCR
+
+   # Deterministic offline mode (default)
+   AI_PROVIDER=mock
+
+   # Gemma 4 via a self-hosted OpenAI-compatible vLLM/Ollama endpoint
+   AI_PROVIDER=gemma
+   GEMMA_BASE_URL=http://127.0.0.1:8000/v1
+   GEMMA_API_KEY=local-gemma
+   GEMMA_MODEL=google/gemma-4-12B-it   # or google/gemma-4-31B-it
+
+   # Or Gemma 4 through the Gemini API when GEMMA_BASE_URL is empty
+   GEMINI_API_KEY=your_gemini_api_key
+   GEMMA_GEMINI_MODEL=gemma-4-31b-it   # or gemma-4-26b-a4b-it
    ```
+   *`AI_PROVIDER=mock` keeps every response deterministic and offline. Raw document bytes are only sent to a self-hosted Gemma 4 endpoint; PDFs are parsed locally and only redacted text is sent. Check the active provider at `GET /ai/status`.*
+
+   To run the live Gemma 4 text, JSON, vision, and multilingual tests, configure a real key/endpoint and opt in:
+   ```bash
+   RUN_LIVE_GEMMA=1 pytest tests/test_live_gemma.py -v
+   ```
+   Without `RUN_LIVE_GEMMA=1` or a configured key/endpoint these tests skip instead of faking a successful inference.
 4. Start the FastAPI development server:
    ```bash
    uvicorn app.main:app --reload --port 8000
@@ -175,7 +194,7 @@ This project includes a **GitHub Actions CI Pipeline** configured in `.github/wo
 
 ### 2. Setup Frontend
 1. Open a new terminal in the `frontend/` directory.
-2. Configure your environment variables in `.env` (by default, the application fallback is set to the deployed Render backend `https://saarthi-ai-ztrc.onrender.com`).
+2. Copy `.env.example` to `.env` and set `NEXT_PUBLIC_API_URL` to your backend (defaults to `http://localhost:8000`).
 3. Build and launch Next.js in development mode:
    ```bash
    npm run dev
@@ -199,3 +218,62 @@ This launches the backend locally on `http://localhost:8000` (live production ba
 * **Frontend**: Hosted on Vercel ([https://saarthi-ai-dev.vercel.app](https://saarthi-ai-dev.vercel.app))
 * **Backend**: Hosted on Render ([https://saarthi-ai-ztrc.onrender.com](https://saarthi-ai-ztrc.onrender.com))
 * **Communication**: The frontend communicates with the deployed backend using environment variables (specifically `NEXT_PUBLIC_API_URL` pointing to the Render URL).
+
+### Deployment environment checklist
+
+The repository does not include `render.yaml` or `vercel.json`; configure these values in the Render and Vercel dashboards.
+
+**Render service settings**
+
+| Setting | Value |
+| --- | --- |
+| Runtime | Docker (`backend/Dockerfile`, honors Render's `$PORT`) or Python 3.11 |
+| Root Directory | `backend` |
+| Build Command (Python runtime) | `pip install -r requirements.txt` |
+| Start Command (Python runtime) | `uvicorn app.main:app --host 0.0.0.0 --port $PORT` |
+| Health Check Path | `/health` |
+
+Render deploys from the pushed Git branch. Commit and push the updated backend before triggering a deploy, or use **Manual Deploy → Deploy latest commit** after the push.
+
+**Render persistence**
+
+SQLite and uploaded documents live on the local filesystem. On Render's ephemeral filesystem they are lost on every restart or redeploy. Attach a persistent disk (for example mounted at `/var/data`) and point both paths at it:
+
+```
+DATABASE_URL=sqlite:////var/data/saarthi.db
+UPLOAD_DIR=/var/data/uploads
+```
+
+Render's free instance type does not support persistent disks. Use a paid disk or an external PostgreSQL URL for `DATABASE_URL` if data must survive restarts.
+
+**Render backend environment**
+```
+ENVIRONMENT=production
+AI_PROVIDER=gemma
+GEMINI_API_KEY=<real key>                 # hosted Gemma 4 via Gemini API
+# OR
+GEMMA_BASE_URL=<private vLLM/Ollama URL>  # self-hosted Gemma 4
+GEMMA_API_KEY=<endpoint key, if required>
+GEMMA_GEMINI_MODEL=gemma-4-31b-it
+GEMMA_MODEL=google/gemma-4-12B-it
+GEMMA_ALLOW_DOCUMENT_BYTES=false
+AI_TIMEOUT_SECONDS=90
+AI_MAX_RETRIES=1
+SECRET_KEY=<long random string>
+DATABASE_URL=<persistent database URL>
+ALLOWED_ORIGINS=https://saarthi-ai-dev.vercel.app
+UPLOAD_DIR=<persistent disk path>
+MAX_UPLOAD_BYTES=10485760
+ALLOWED_UPLOAD_EXTENSIONS=pdf,png,jpg,jpeg
+```
+
+Do not set `GEMMA_ALLOW_DOCUMENT_BYTES=true` for a hosted endpoint unless you accept sending raw identity-document images off-device. PDFs are always parsed locally and only redacted text is sent.
+
+**Vercel frontend environment**
+```
+NEXT_PUBLIC_API_URL=https://saarthi-ai-ztrc.onrender.com
+```
+
+Redeploy the Vercel project after changing this value because `NEXT_PUBLIC_*` variables are baked in at build time.
+
+After deploying, verify `GET /health` returns `{"status": "ok"}` and `GET /ai/status` reports `mode: "live"`, `is_gemma: true`, and the expected `gemma_mode`. A `404` from either endpoint means the Render backend is still running an older build and must be redeployed.

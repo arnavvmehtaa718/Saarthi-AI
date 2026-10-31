@@ -5,6 +5,23 @@ import GlassCard from "../ui/GlassCard";
 import { Accessibility, Mic, Volume2, Type, Eye, VolumeX, MicOff } from "lucide-react";
 import { t, Language } from "../../lib/translations";
 
+interface SpeechRecognitionResultLike {
+  results: { [index: number]: { [index: number]: { transcript: string } } };
+}
+
+interface SpeechRecognitionInstance {
+  continuous: boolean;
+  lang: string;
+  interimResults: boolean;
+  onstart: () => void;
+  onresult: (event: SpeechRecognitionResultLike) => void;
+  onerror: () => void;
+  onend: () => void;
+  start: () => void;
+}
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionInstance;
+
 interface AccessibilityControlsProps {
   language: Language;
   onVoiceSearch: (transcript: string) => void;
@@ -24,7 +41,11 @@ export default function AccessibilityControls({
 
   // Handle Speech Recognition
   const startListening = () => {
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    const speechWindow = window as unknown as {
+      SpeechRecognition?: SpeechRecognitionConstructor;
+      webkitSpeechRecognition?: SpeechRecognitionConstructor;
+    };
+    const SpeechRecognition = speechWindow.SpeechRecognition || speechWindow.webkitSpeechRecognition;
     if (!SpeechRecognition) {
       alert(language === "hi"
         ? "इस ब्राउज़र में वॉइस इनपुट समर्थित नहीं है। कृपया Google Chrome आज़माएं।"
@@ -41,7 +62,7 @@ export default function AccessibilityControls({
       setIsListening(true);
     };
 
-    recognition.onresult = (event: any) => {
+    recognition.onresult = (event: SpeechRecognitionResultLike) => {
       const transcript = event.results[0][0].transcript;
       onVoiceSearch(transcript);
       setIsListening(false);

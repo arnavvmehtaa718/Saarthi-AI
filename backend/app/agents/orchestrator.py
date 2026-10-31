@@ -1,26 +1,27 @@
 import logging
-import json
-from typing import Dict, Any, List, Tuple
+from typing import Any, Dict, List
+
 from sqlmodel import Session, select
-from app.models import UserProfile, Scheme, UserScheme, Document
-from app.agents.profile_agent import CitizenProfileAgent
-from app.agents.discovery_agent import SchemeDiscoveryAgent
-from app.agents.eligibility_agent import EligibilityVerificationAgent
-from app.agents.document_agent import DocumentIntelligenceAgent
-from app.agents.prep_agent import ApplicationPreparationAgent
+
+from app.agents.base import get_ai_client
 from app.agents.deadline_agent import DeadlineMonitoringAgent
-from app.agents.translator_agent import AITranslatorAgent
+from app.agents.discovery_agent import SchemeDiscoveryAgent
+from app.agents.document_agent import DocumentIntelligenceAgent
 from app.agents.legal_agent import LegalPolicyAgent
-from app.agents.recommendation_agent import RecommendationAgent
 from app.agents.memory_agent import MemoryAgent
+from app.agents.prep_agent import ApplicationPreparationAgent
+from app.agents.profile_agent import CitizenProfileAgent
+from app.agents.recommendation_agent import RecommendationAgent
+from app.agents.translator_agent import AITranslatorAgent
+from app.models import Scheme, UserProfile
 
 logger = logging.getLogger("saarthi.orchestrator")
+
 
 class MultiAgentOrchestrator:
     def __init__(self):
         self.profile_agent = CitizenProfileAgent()
         self.discovery_agent = SchemeDiscoveryAgent()
-        self.eligibility_agent = EligibilityVerificationAgent()
         self.document_agent = DocumentIntelligenceAgent()
         self.prep_agent = ApplicationPreparationAgent()
         self.deadline_agent = DeadlineMonitoringAgent()
@@ -29,190 +30,225 @@ class MultiAgentOrchestrator:
         self.recommendation_agent = RecommendationAgent()
         self.memory_agent = MemoryAgent()
 
+    def _profile_payload(self, profile: UserProfile) -> Dict[str, Any]:
+        fields = [
+            "full_name",
+            "state",
+            "district",
+            "age",
+            "gender",
+            "annual_income",
+            "category",
+            "occupation",
+            "educational_level",
+            "is_student",
+            "owns_land",
+            "land_area_hectares",
+            "employment_status",
+            "is_disabled",
+            "disability_percentage",
+            "disability_type",
+            "has_ration_card",
+            "is_rural",
+            "owns_house",
+            "family_beneficiary_count",
+            "has_business_plan",
+            "is_government_employee",
+        ]
+        return {field: getattr(profile, field, None) for field in fields}
+
     def process_chat_message(
-        self, 
-        session: Session, 
-        user_id: int, 
-        message: str, 
-        language: str = "en", 
-        eli15_mode: bool = False
+        self,
+        session: Session,
+        user_id: int,
+        message: str,
+        language: str = "en",
+        eli15_mode: bool = False,
     ) -> Dict[str, Any]:
-        """
-        Main multi-agent collaborative pipeline:
-        Planner -> Profile Extractor -> Scheme Searcher -> Eligibility Verifier -> Document Examiner -> Critic -> Reflection -> Response.
-        """
-        # Step 1: Planner Phase
-        # Analyze input and load current user profile/vault memory
-        profile_data = self.memory_agent.load_profile_data(session, user_id)
-        user_docs = self.memory_agent.load_user_documents(session, user_id)
-        
-        logger.info(f"[Planner] Processing message for user {user_id}. Loaded profile and {len(user_docs)} documents.")
-        
-        # Step 2: Profile Agent updates profile based on text
-        updated_profile_data = self.profile_agent.extract_profile_from_text(message, profile_data)
-        
-        # Save profile changes to DB
+        agents = (
+            self.profile_agent,
+            self.discovery_agent,
+            self.document_agent,
+            self.prep_agent,
+            self.deadline_agent,
+            self.translator_agent,
+            self.legal_agent,
+            self.recommendation_agent,
+            self.memory_agent,
+        )
+        for agent in agents:
+            agent.last_fallback = None
+
         profile = session.exec(select(UserProfile).where(UserProfile.user_id == user_id)).first()
         if not profile:
             profile = UserProfile(user_id=user_id)
             session.add(profile)
-            
-        for k, v in updated_profile_data.items():
-            if k not in ["id", "user_id", "explanation", "created_at", "updated_at"] and v is not None:
-                setattr(profile, k, v)
+            session.commit()
+            session.refresh(profile)
+
+        profile_data = self.memory_agent.load_profile_data(session, user_id)
+        user_docs = self.memory_agent.load_user_documents(session, user_id)
+        chat_context = self.memory_agent.load_chat_context(session, user_id, limit=8)
+
+        updated_profile_data = self.profile_agent.extract_profile_from_text(
+            message, profile_data, chat_context
+        )
+        for key, value in updated_profile_data.items():
+            if key in {"id", "user_id", "created_at", "updated_at", "explanation"}:
+                continue
+            if value is not None and hasattr(profile, key):
+                setattr(profile, key, value)
+        session.add(profile)
         session.commit()
         session.refresh(profile)
-        
-        # Fetch all available central schemes from DB
+
         schemes = session.exec(select(Scheme)).all()
-        
-        # Step 3: Discovery Agent filters and ranks schemes
-        # Check if the query is asking for a search or just a general chat
-        discovered_schemes = []
-        if len(message.strip()) > 5:
-            # Match search queries
-            searched_schemes = self.discovery_agent.search_schemes(message, schemes)
-            discovered_schemes = self.discovery_agent.rank_schemes_for_profile(profile, searched_schemes)
-        else:
-            discovered_schemes = self.discovery_agent.rank_schemes_for_profile(profile, schemes)
+        searched_schemes = self.discovery_agent.search_schemes(message, schemes)
+        candidate_schemes = searched_schemes or schemes
+        ranked = self.discovery_agent.rank_schemes_for_profile(profile, candidate_schemes)
+        top_matches = ranked[:3]
 
-        # Step 4: Eligibility & Document Verification on top matches
-        eligibility_results = []
-        # Run detailed checks on top 3 schemes
-        top_matches = discovered_schemes[:3]
-        
+        eligibility_results: List[Dict[str, Any]] = []
         for match in top_matches:
-            sch = match["scheme"]
-            elig_res = self.eligibility_agent.verify(profile, sch)
-            doc_res = self.document_agent.analyze_documents(user_docs, sch)
-            prep_res = self.prep_agent.prepare_application_kit(profile, sch)
-            
-            # Combine into a result structure
-            scheme_summary = {
-                "id": sch.id,
-                "title": sch.title,
-                "description": sch.description,
-                "benefit_details": sch.benefit_details,
-                "eligibility_status": elig_res["status"],
-                "eligibility_explanation": elig_res["explanation"],
-                "score": elig_res["score"],
-                "checks": elig_res["checks"],
-                "readiness_score": doc_res["readiness_score"],
-                "missing_documents": doc_res["missing"],
-                "checklist": doc_res["checklist"],
-                "timeline": prep_res["timeline"],
-                "cover_letter": prep_res["cover_letter"],
-                "steps": prep_res["steps"]
+            scheme = match["scheme"]
+            document_result = self.document_agent.analyze_documents(user_docs, scheme)
+            prep = self.prep_agent.prepare_application_kit(profile, scheme, document_result)
+
+            summary = {
+                "id": scheme.id,
+                "title": scheme.title,
+                "description": scheme.description,
+                "benefit_type": scheme.benefit_type,
+                "benefit_details": scheme.benefit_details,
+                "department": scheme.department,
+                "eligibility_status": match["eligibility_status"],
+                "eligibility_score": match["eligibility_score"],
+                "eligibility_explanation": match["eligibility_explanation"],
+                "eligibility_checks": match.get("checks", []),
+                "missing_information": match.get("missing_information", []),
+                "warnings": match.get("warnings", []),
+                "decision_source": match.get("decision_source", "deterministic_rules"),
+                "readiness_score": document_result["readiness_score"],
+                "required_documents": scheme.required_documents,
+                "missing_documents": document_result["missing"],
+                "checklist": document_result["checklist"],
+                "timeline": prep["timeline"],
+                "cover_letter": prep["cover_letter"],
+                "steps": prep["steps"],
+                "complexity": scheme.complexity,
+                "application_url": scheme.application_url,
+                "source_url": scheme.source_url or scheme.application_url,
+                "source_note": scheme.source_note,
+                "state": scheme.state,
+                "tags": scheme.tags,
+                "deadlines": scheme.deadlines,
+                "eli15_explanation": scheme.eli15_explanation,
             }
-            
-            # Apply ELI15 if checked
             if eli15_mode:
-                scheme_summary["eligibility_explanation"] = self.legal_agent.simplify_rules(sch, profile)
-                
-            eligibility_results.append(scheme_summary)
+                summary["eligibility_explanation"] = scheme.eli15_explanation
+            eligibility_results.append(summary)
 
-        # Step 5: Recommendations for Alternative/NGO aid
-        ngo_recommendations = self.recommendation_agent.recommend_alternatives(profile, eligibility_results)
-
-        # Step 6: Critic & Reflection Phase
-        # Verify response alignment: did we recommend something in conflict?
-        agent_collaboration_log = (
-            f"Planner coordinated Profile, Discovery, and Eligibility agents. "
-            f"Caseworker updated profile fields: {updated_profile_data.get('explanation')}. "
-            f"Found {len(discovered_schemes)} matching schemes, verified eligibility for top {len(eligibility_results)}."
+        ngo_recommendations = self.recommendation_agent.recommend_alternatives(
+            profile, eligibility_results
         )
-        critic_flags = []
-        for res in eligibility_results:
-            if res["eligibility_status"] == "Not Eligible" and res["score"] > 80:
-                critic_flags.append(f"Critic conflict: Scheme {res['title']} marked Not Eligible but has high score.")
-        
-        if critic_flags:
-            logger.warning(f"[Critic] Flags detected: {critic_flags}. Self-correction initiated.")
-            # Self-correct scores
-            for res in eligibility_results:
-                if res["eligibility_status"] == "Not Eligible":
-                    res["score"] = 10.0
-                    
-        # Step 7: Translation Phase
-        msg_lower = message.lower()
-        if "loan" in msg_lower or "borrow" in msg_lower or "credit" in msg_lower or "mudra" in msg_lower or "money" in msg_lower:
-            caseworker_greeting = (
-                "Based on your query about business credits and micro-loans, I have updated your citizen profile indicators. "
-                "The **Pradhan Mantri Mudra Yojana (PMMY)** offers collateral-free business loans up to ₹10 Lakh. "
-                "Since you are registered as a business owner or artisan, you can apply for these micro-credits directly through commercial bank branches."
+
+        status_counts = {
+            status: sum(1 for item in top_matches if item["eligibility_status"] == status)
+            for status in [
+                "Eligible",
+                "Potentially Eligible",
+                "Insufficient Information",
+                "Not Eligible",
+            ]
+        }
+        profile_note = updated_profile_data.get("explanation", "")
+        if profile_note.startswith("No new profile fields"):
+            intro = "I reviewed your profile and checked the schemes that best match this conversation."
+        else:
+            intro = f"I updated your profile: {profile_note}"
+
+        reply_parts = [intro, ""]
+        if eligibility_results:
+            reply_parts.append(
+                f"I found **{status_counts['Eligible']} eligible**, "
+                f"**{status_counts['Potentially Eligible']} potentially eligible**, "
+                f"**{status_counts['Insufficient Information']} needing information**, and "
+                f"**{status_counts['Not Eligible']} not eligible** schemes in this result."
             )
-        elif "health" in msg_lower or "medical" in msg_lower or "insurance" in msg_lower or "sick" in msg_lower or "hospital" in msg_lower or "ayushman" in msg_lower:
-            caseworker_greeting = (
-                "I see you are inquiring about medical benefits or health coverage. "
-                "The **Ayushman Bharat PM-JAY** provides up to ₹5 Lakh of free health cover per family per year for secondary and tertiary hospitalization. "
-                "Your demographic profile indicates you qualify; ensure you upload a valid Ration Card in your document vault to complete verification."
-            )
-        elif "scholarship" in msg_lower or "study" in msg_lower or "college" in msg_lower or "student" in msg_lower or "education" in msg_lower:
-            caseworker_greeting = (
-                "Regarding your inquiry about educational aid, the **Post-Matric Scholarship Scheme** provides tuition reimbursement and allowances for SC/ST/OBC and low-income students. "
-                "Ensure your caste certificate and school credentials are saved in your vault so we can draft your application package."
-            )
-        elif "farm" in msg_lower or "kisan" in msg_lower or "crop" in msg_lower or "land" in msg_lower:
-            caseworker_greeting = (
-                "Under **PM-KISAN (Pradhan Mantri Kisan Samman Nidhi)**, landholding farmers receive income support of ₹6,000 per year directly to their accounts. "
-                "Since your occupation is set to Farmer, ensure you specify your land ownership state details to clear the eligibility check."
+            reply_parts.append("")
+            reply_parts.append("### Schemes checked for you")
+            for item in eligibility_results:
+                reply_parts.append(f"**{item['title']}** — {item['eligibility_status']}")
+                reply_parts.append(item["eligibility_explanation"])
+                if item["missing_documents"]:
+                    labels = ", ".join(doc.replace("_", " ").upper() for doc in item["missing_documents"])
+                    reply_parts.append(f"Documents still needed: {labels}.")
+                else:
+                    reply_parts.append("All documents required by this scheme are currently in your vault.")
+                reply_parts.append("")
+            reply_parts.append(
+                "Open a scheme in the explorer to see the full checklist, source link, and draft cover letter."
             )
         else:
-            caseworker_greeting = (
-                "Hello! I am your Saarthi AI digital caseworker. Based on our chat, I have updated your profile. "
-                f"Your profile matches **{sum(1 for r in eligibility_results if r['eligibility_status'] in ['Eligible', 'Likely Eligible'])}** key central welfare schemes."
+            reply_parts.append(
+                "I could not match a scheme to that message. Try describing your occupation, income, state, or the benefit you need."
             )
 
-        assistant_reply = f"{caseworker_greeting}\n\n"
-        
-        if eligibility_results:
-            assistant_reply += "### Recommended Schemes:\n"
-            for res in eligibility_results[:2]:
-                assistant_reply += (
-                    f"1. **{res['title']}**\n"
-                    f"   - **Status**: {res['eligibility_status']}\n"
-                    f"   - **Explanation**: {res['eligibility_explanation']}\n"
-                    f"   - **Required Documents**: {', '.join([d.upper() for d in res['missing_documents']]) if res['missing_documents'] else 'All documents available!'}\n"
-                )
-        else:
-            assistant_reply += "I couldn't find any direct government scheme matching your query. Let me look up some NGO programs for you."
-            
         if ngo_recommendations:
-            assistant_reply += "\n### NGO / Private Alternatives:\n"
+            reply_parts.append("")
+            reply_parts.append("### Non-government alternatives")
             for ngo in ngo_recommendations[:2]:
-                assistant_reply += (
-                    f"- **{ngo['title']}**: {ngo['description']}\n"
-                    f"  - **Benefit**: {ngo['benefit_details']}\n"
+                reply_parts.append(
+                    f"- **{ngo['title']}**: {ngo['description']} ({ngo['url']})"
                 )
-                
-        # If language is Hindi, translate the final response and scheme summaries
+
+        reply_parts.append("")
+        fallback_notes = [
+            agent.last_fallback for agent in agents if agent.last_fallback
+        ]
+        if fallback_notes:
+            reply_parts.append(
+                "Live AI was unavailable for part of this response, so those steps "
+                "used labelled deterministic rules or templates instead."
+            )
+            reply_parts.append("")
+        reply_parts.append(
+            "This is a preliminary assessment based on the information you provided. "
+            "The concerned department makes the final eligibility decision."
+        )
+        assistant_reply = "\n".join(reply_parts)
+
+        translation_note = None
         if language.lower() == "hi":
             assistant_reply = self.translator_agent.translate(assistant_reply, "hi")
-            for res in eligibility_results:
-                res["title"] = self.translator_agent.translate(res["title"], "hi")
-                res["description"] = self.translator_agent.translate(res["description"], "hi")
-                res["benefit_details"] = self.translator_agent.translate(res["benefit_details"], "hi")
-                res["eligibility_explanation"] = self.translator_agent.translate(res["eligibility_explanation"], "hi")
-                res["eligibility_status"] = self.translator_agent.translate(res["eligibility_status"], "hi")
+            for item in eligibility_results:
+                for field in ("title", "description", "benefit_details", "eligibility_explanation", "eligibility_status"):
+                    item[field] = self.translator_agent.translate(item[field], "hi")
+            if not self.translator_agent.use_real_ai or self.translator_agent.last_fallback:
+                translation_note = (
+                    "Offline Hindi glossary is active. Some longer text may remain in English."
+                )
 
-        # Save conversation to memory database
+        fallback_notes = [
+            agent.last_fallback for agent in agents if agent.last_fallback
+        ]
+
         self.memory_agent.save_chat_message(session, user_id, "user", message)
-        self.memory_agent.save_chat_message(session, user_id, "assistant", assistant_reply, "Caseworker Orchestrator")
+        self.memory_agent.save_chat_message(
+            session, user_id, "assistant", assistant_reply, "Caseworker Orchestrator"
+        )
 
         return {
             "assistant_reply": assistant_reply,
-            "profile": {
-                "state": profile.state,
-                "age": profile.age,
-                "annual_income": profile.annual_income,
-                "occupation": profile.occupation,
-                "category": profile.category,
-                "is_student": profile.is_student,
-                "owns_land": profile.owns_land,
-                "is_disabled": profile.is_disabled,
-                "disability_percentage": profile.disability_percentage
-            },
+            "profile": self._profile_payload(profile),
             "schemes": eligibility_results,
             "ngo_recommendations": ngo_recommendations,
-            "agent_collaboration_log": agent_collaboration_log
+            "status_counts": status_counts,
+            "translation_note": translation_note,
+            "ai_fallback_notes": fallback_notes,
+            "agent_collaboration_log": (
+                "Profile extraction, deterministic eligibility checks, document readiness, "
+                "application preparation, and recommendation steps completed."
+            ),
+            "ai": get_ai_client().status(),
         }

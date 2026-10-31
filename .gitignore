@@ -30,6 +30,10 @@ backend/saarthi.db
 backend/uploads/*
 !backend/uploads/.gitkeep
 
+# Large local media (not part of the deployed app)
+*.mp4
+/YT THUMBNAIL.png
+
 # IDEs & System files
 .vscode/
 .idea/

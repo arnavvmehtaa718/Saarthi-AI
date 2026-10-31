@@ -32,11 +32,15 @@ class DocumentIntelligenceAgent(BaseAgent):
             expiry_alert = False
             doc_name = None
             doc_id = None
+            confidence = None
+            review_required = False
             
             if matched_doc:
                 status = "Verified"
                 doc_name = matched_doc.file_name
                 doc_id = matched_doc.document_id_number
+                confidence = matched_doc.confidence
+                review_required = matched_doc.review_required
                 
                 # Check for expiration
                 if matched_doc.expiry_date:
@@ -45,6 +49,12 @@ class DocumentIntelligenceAgent(BaseAgent):
                         status = "Expired"
                         expiry_alert = True
                         warnings.append(f"Your document '{matched_doc.file_name}' ({req_cat.upper()}) has expired.")
+                if status == "Verified" and review_required:
+                    status = "Needs Review"
+                    warnings.append(
+                        f"Your document '{matched_doc.file_name}' ({req_cat.upper()}) needs manual review "
+                        "because extraction confidence is low or the file was not read by a vision model."
+                    )
             else:
                 missing.append(req_cat)
                 
@@ -54,6 +64,8 @@ class DocumentIntelligenceAgent(BaseAgent):
                 "status": status,
                 "file_name": doc_name,
                 "document_id": doc_id,
+                "confidence": confidence,
+                "review_required": review_required,
                 "expiry_alert": expiry_alert
             })
             

@@ -1,14 +1,17 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 WORKDIR /frontend
 
 COPY package*.json ./
 
-RUN npm install --legacy-peer-deps
+RUN npm ci
 
 COPY . .
 
-RUN npm run build --legacy-peer-deps
+ARG NEXT_PUBLIC_API_URL=http://localhost:8000
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+
+RUN npm run build
 
 EXPOSE 3000
 

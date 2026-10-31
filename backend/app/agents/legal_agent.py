@@ -1,6 +1,8 @@
+import json
 from typing import Dict, Any, List
 from app.agents.base import BaseAgent
 from app.models import Scheme, UserProfile
+from app.services.privacy import redact_pii
 
 class LegalPolicyAgent(BaseAgent):
     def __init__(self):
@@ -71,10 +73,26 @@ class LegalPolicyAgent(BaseAgent):
                     "You are a helpful youth educator. Simplify complicated legal government policy rules into "
                     "extremely simple, clear, and engaging language. Avoid heavy jargon. Break down calculations if any."
                 )
+                safe_profile = (
+                    redact_pii(
+                        json.dumps(
+                            {
+                                "state": profile.state,
+                                "age": profile.age,
+                                "annual_income": profile.annual_income,
+                                "category": profile.category,
+                                "occupation": profile.occupation,
+                            },
+                            default=str,
+                        )
+                    )
+                    if profile
+                    else "Not Provided"
+                )
                 prompt = (
                     f"Scheme Title: {scheme.title}\n"
                     f"Detailed Eligibility Rules: {rules}\n"
-                    f"Citizen Profile: {profile.__dict__ if profile else 'Not Provided'}\n"
+                    f"Citizen Profile (PII redacted): {safe_profile}\n"
                     f"Simplify these rules."
                 )
                 ai_eli15 = self.run_llm(prompt, system_instruction)

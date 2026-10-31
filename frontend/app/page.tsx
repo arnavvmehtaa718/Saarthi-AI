@@ -54,8 +54,8 @@ export default function OnboardingPage() {
       const data = await response.json();
       localStorage.setItem("saarthi_token", data.access_token);
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Failed to authenticate.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to authenticate.");
     } finally {
       setLoading(false);
     }
@@ -76,8 +76,8 @@ export default function OnboardingPage() {
       const data = await response.json();
       localStorage.setItem("saarthi_token", data.access_token);
       router.push("/dashboard");
-    } catch (err: any) {
-      setError(err.message || "Guest initialization failed.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Guest initialization failed.");
     } finally {
       setLoading(false);
     }

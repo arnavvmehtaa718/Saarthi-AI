@@ -20,6 +20,7 @@ class UserProfile(SQLModel, table=True):
     user_id: int = Field(foreign_key="user.id", unique=True, index=True)
     
     # Demographics & State
+    full_name: Optional[str] = Field(default=None)
     state: str = Field(default="All")  # e.g., "Uttar Pradesh", "Maharashtra"
     district: Optional[str] = Field(default=None)
     age: int = Field(default=18)
@@ -31,7 +32,7 @@ class UserProfile(SQLModel, table=True):
     occupation: str = Field(default="Unemployed") # "Farmer", "Student", "Artisan", "Business Owner", "Salaried", "Unemployed", "Street Vendor"
     educational_level: str = Field(default="None") # "Illiterate", "Primary", "Metric", "Senior Secondary", "Graduate", "Post Graduate"
     
-    # Flags
+    # Flags. Optional values mean "not confirmed yet" and must not be treated as False.
     is_student: bool = Field(default=False)
     owns_land: bool = Field(default=False)
     land_area_hectares: float = Field(default=0.0)
@@ -39,6 +40,12 @@ class UserProfile(SQLModel, table=True):
     is_disabled: bool = Field(default=False)
     disability_percentage: float = Field(default=0.0)
     disability_type: Optional[str] = Field(default=None)
+    has_ration_card: Optional[bool] = Field(default=None)
+    is_rural: Optional[bool] = Field(default=None)
+    owns_house: Optional[bool] = Field(default=None)
+    family_beneficiary_count: Optional[int] = Field(default=None)
+    has_business_plan: Optional[bool] = Field(default=None)
+    is_government_employee: Optional[bool] = Field(default=None)
     
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
@@ -61,6 +68,9 @@ class Scheme(SQLModel, table=True):
     
     state: str = Field(default="Central")  # "Central" or specific State Name
     application_url: Optional[str] = Field(default=None)
+    source_url: Optional[str] = Field(default=None)
+    source_note: Optional[str] = Field(default=None)
+    effective_date: Optional[str] = Field(default=None)  # ISO date only when officially known
     steps: List[str] = Field(default_factory=list, sa_column=Column(JSON))
     deadlines: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON)) # e.g. {"end_date": "2026-12-31", "urgency": "High"}
     
@@ -77,7 +87,7 @@ class UserScheme(SQLModel, table=True):
     
     status: str = Field(default="discovered")  # "discovered", "saved", "applied", "approved", "rejected"
     eligibility_score: float = Field(default=0.0)  # 0 to 100
-    eligibility_status: str = Field(default="Likely Eligible")  # "Eligible", "Likely Eligible", "Missing Information", "Not Eligible"
+    eligibility_status: str = Field(default="Insufficient Information")  # "Eligible", "Potentially Eligible", "Insufficient Information", "Not Eligible"
     eligibility_explanation: str
     
     missing_documents: List[str] = Field(default_factory=list, sa_column=Column(JSON))
@@ -105,6 +115,8 @@ class Document(SQLModel, table=True):
     owner_name: Optional[str] = Field(default=None)
     expiry_date: Optional[datetime] = Field(default=None)
     is_valid: bool = Field(default=True)
+    confidence: float = Field(default=0.0)
+    review_required: bool = Field(default=False)
     
     extracted_metadata: Dict[str, Any] = Field(default_factory=dict, sa_column=Column(JSON))
     

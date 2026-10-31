@@ -2,16 +2,24 @@
 
 import React from "react";
 import GlassCard from "../ui/GlassCard";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell, PieChart, Pie } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, Cell } from "recharts";
 import { TrendingUp, Award, Clock, FileText, CheckCircle2 } from "lucide-react";
 import { t, Language } from "../../lib/translations";
 
 interface AnalyticsData {
   unlocked_benefit_amount: number;
+  estimated_benefit_amount?: number;
+  benefit_estimate_note?: string;
   schemes_discovered_count: number;
+  schemes_evaluated_count?: number;
+  status_breakdown?: Record<string, number>;
+  benefit_breakdown?: Array<{ name: string; value: number }>;
   pending_documents_count: number;
+  documents_count?: number;
   upcoming_deadlines_count: number;
-  success_rate: number;
+  success_rate: number | null;
+  applied_count?: number;
+  approved_count?: number;
   alerts: Array<{
     type: string;
     severity: string;
@@ -35,19 +43,15 @@ export default function AnalyticsDashboard({ data, language }: AnalyticsDashboar
     }).format(value);
   };
 
-  // Static mock data breakdown for seeded schemes matched (adjust based on benefit unlocked)
-  const chartData = [
-    { name: "Ayushman Bharat", value: data.unlocked_benefit_amount > 500000 ? 500000 : data.unlocked_benefit_amount },
-    { name: "PM-KISAN", value: data.unlocked_benefit_amount > 6000 ? 6000 : 0 },
-    { name: "Post-Matric", value: data.unlocked_benefit_amount > 25000 ? 25000 : 0 },
-    { name: "SVANidhi", value: data.unlocked_benefit_amount > 10000 ? 10000 : 0 },
-  ].filter(item => item.value > 0);
-
-  // If sum of items doesn't match total, add "Others"
-  const itemsSum = chartData.reduce((acc, curr) => acc + curr.value, 0);
-  if (data.unlocked_benefit_amount > itemsSum && itemsSum > 0) {
-    chartData.push({ name: language === "hi" ? "अन्य" : "Others", value: data.unlocked_benefit_amount - itemsSum });
-  }
+  const benefitAmount = data.estimated_benefit_amount ?? data.unlocked_benefit_amount;
+  const chartData = (data.benefit_breakdown || []).filter((item) => item.value > 0);
+  const statusBreakdown = data.status_breakdown || {};
+  const statusRows = [
+    { key: "Eligible", label: t("status_eligible", language), color: "text-emerald-400" },
+    { key: "Potentially Eligible", label: t("status_potentially_eligible", language), color: "text-sky-400" },
+    { key: "Insufficient Information", label: t("status_insufficient", language), color: "text-amber-400" },
+    { key: "Not Eligible", label: t("status_not_eligible", language), color: "text-rose-400" },
+  ];
 
   // Colors for columns
   const COLORS = ["#38bdf8", "#0284c7", "#10b981", "#fbbf24", "#f43f5e"];
@@ -64,7 +68,10 @@ export default function AnalyticsDashboard({ data, language }: AnalyticsDashboar
           <div>
             <span className="text-xs text-slate-400 block font-medium">{t("kpi_benefits", language)}</span>
             <span className="text-xl font-bold font-mono tracking-tight text-white">
-              {formatCurrency(data.unlocked_benefit_amount)}
+              {formatCurrency(benefitAmount)}
+            </span>
+            <span className="text-[9px] text-slate-500 block leading-tight mt-0.5">
+              {t("kpi_benefits_note", language)}
             </span>
           </div>
         </GlassCard>
@@ -114,7 +121,7 @@ export default function AnalyticsDashboard({ data, language }: AnalyticsDashboar
         {/* Benefit distribution column chart */}
         <GlassCard className="lg:col-span-2 border-sky-950/20">
           <h3 className="text-sm font-semibold mb-4 text-slate-300">{t("chart_title", language)}</h3>
-          <div className="h-64 w-full">
+          <div className="h-56 w-full">
             {chartData.length === 0 ? (
               <div className="h-full flex items-center justify-center text-slate-400 text-xs">
                 {t("chart_empty", language)}
@@ -135,7 +142,7 @@ export default function AnalyticsDashboard({ data, language }: AnalyticsDashboar
                     tickLine={false}
                   />
                   <Tooltip
-                    formatter={(value: any) => [formatCurrency(value), language === "hi" ? "लाभ राशि" : "Benefit Amount"]}
+                    formatter={(value) => [formatCurrency(Number(value)), t("chart_benefit_amount", language)]}
                     cursor={{ fill: "rgba(255, 255, 255, 0.06)" }}
                     contentStyle={{
                       backgroundColor: "#000000",
@@ -162,6 +169,22 @@ export default function AnalyticsDashboard({ data, language }: AnalyticsDashboar
                 </BarChart>
               </ResponsiveContainer>
             )}
+          </div>
+
+          <div className="mt-3 pt-3 border-t border-slate-800/80">
+            <h4 className="text-[11px] font-semibold text-slate-400 mb-2">
+              {t("status_breakdown_title", language)}
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+              {statusRows.map((row) => (
+                <div key={row.key} className="rounded-md border border-slate-800 bg-slate-900/40 px-2.5 py-2">
+                  <span className={`text-base font-bold font-mono ${row.color}`}>
+                    {statusBreakdown[row.key] ?? 0}
+                  </span>
+                  <span className="text-[9px] text-slate-400 block leading-tight">{row.label}</span>
+                </div>
+              ))}
+            </div>
           </div>
         </GlassCard>
 

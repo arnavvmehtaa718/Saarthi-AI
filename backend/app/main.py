@@ -1,47 +1,61 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
-import os
 
+from app.agents.base import get_ai_client
 from app.core.config import settings
 from app.core.db import init_db
-from app.routes import auth, profile, schemes, vault, chat, analytics
+from app.routes import analytics, auth, chat, profile, schemes, vault
+
+
+@asynccontextmanager
+async def lifespan(_: FastAPI):
+    init_db()
+    yield
+
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
-    description="Multi-Agent platform for autonomous government benefits discovery and application prep.",
-    version="1.0.0"
+    description=(
+        "Multi-agent platform for government-benefit discovery, deterministic eligibility "
+        "checks, document readiness, and application preparation."
+    ),
+    version="1.1.0",
+    lifespan=lifespan,
 )
 
-# CORS setup
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust in production
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Serve upload files
-UPLOAD_DIR = "./uploads"
-os.makedirs(UPLOAD_DIR, exist_ok=True)
-app.mount("/uploads", StaticFiles(directory=UPLOAD_DIR), name="uploads")
-
-@app.on_event("startup")
-def on_startup():
-    # Initialize DB tables and seed schemes
-    init_db()
 
 @app.get("/")
 def read_root():
+    ai = get_ai_client()
     return {
         "status": "online",
         "service": settings.PROJECT_NAME,
         "api_docs": "/docs",
-        "version": "1.0.0"
+        "version": "1.1.0",
+        "ai_mode": ai.status()["mode"],
     }
 
-# Include routers
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "environment": settings.ENVIRONMENT}
+
+
+@app.get("/ai/status")
+def ai_status():
+    return get_ai_client().status()
+
+
 app.include_router(auth.router)
 app.include_router(profile.router)
 app.include_router(schemes.router)

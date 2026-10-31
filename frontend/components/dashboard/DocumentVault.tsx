@@ -2,20 +2,27 @@
 
 import React, { useRef, useState } from "react";
 import GlassCard from "../ui/GlassCard";
-import { Folder, Upload, Trash2, Calendar, FileText, CheckCircle2, AlertTriangle, RefreshCw } from "lucide-react";
+import { Folder, Upload, Trash2, Calendar, FileText, CheckCircle2, AlertTriangle, RefreshCw, Download, ShieldCheck } from "lucide-react";
 import { t, Language } from "../../lib/translations";
 
 export interface VaultDocument {
   id: number;
   file_name: string;
+  file_type?: string;
   category: string;
   document_id_number: string | null;
   owner_name: string | null;
   expiry_date: string | null;
   is_valid: boolean;
+  confidence?: number;
+  review_required?: boolean;
+  download_url?: string;
   extracted_metadata: {
     ocr_method?: string;
     summary?: string;
+    provider?: string;
+    model?: string;
+    privacy_note?: string;
   };
 }
 
@@ -23,10 +30,11 @@ interface DocumentVaultProps {
   documents: VaultDocument[];
   onUpload: (file: File, category: string) => Promise<void>;
   onDelete: (id: number) => Promise<void>;
+  onDownload: (id: number) => Promise<void>;
   language: Language;
 }
 
-export default function DocumentVault({ documents, onUpload, onDelete, language }: DocumentVaultProps) {
+export default function DocumentVault({ documents, onUpload, onDelete, onDownload, language }: DocumentVaultProps) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>("other");
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -43,6 +51,10 @@ export default function DocumentVault({ documents, onUpload, onDelete, language 
     { value: "land", labelKey: "cat_land" as const },
     { value: "disability", labelKey: "cat_disability" as const },
     { value: "education", labelKey: "cat_education" as const },
+    { value: "ration", labelKey: "cat_ration" as const },
+    { value: "voter_id", labelKey: "cat_voter" as const },
+    { value: "business_proof", labelKey: "cat_business" as const },
+    { value: "vendor_cert", labelKey: "cat_vendor" as const },
   ];
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -56,8 +68,9 @@ export default function DocumentVault({ documents, onUpload, onDelete, language 
       if (fileInputRef.current) {
         fileInputRef.current.value = "";
       }
-    } catch (err: any) {
-      setUploadError(err.message || (language === "hi" ? "दस्तावेज़ अपलोड विफल।" : "Failed to upload document."));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      setUploadError(message || (language === "hi" ? "दस्तावेज़ अपलोड विफल।" : "Failed to upload document."));
     } finally {
       setIsUploading(false);
     }
@@ -128,6 +141,11 @@ export default function DocumentVault({ documents, onUpload, onDelete, language 
             {uploadError}
           </div>
         )}
+
+        <div className="flex items-start gap-1.5 text-[10px] text-slate-500 leading-relaxed">
+          <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 shrink-0 mt-0.5" />
+          <span>{t("vault_private_note", language)}</span>
+        </div>
       </div>
 
       {/* Documents Table */}
@@ -186,18 +204,48 @@ export default function DocumentVault({ documents, onUpload, onDelete, language 
                         )}
                         {!doc.document_id_number && !doc.expiry_date && !doc.owner_name && (
                           <span className="text-slate-400 italic">
-                            {language === "hi" ? "कोई संरचित फ़ील्ड नहीं निकाली गई" : "No structured fields extracted"}
+                            {language === "hi" ? "कोई संरचित फ़ील्ड निकाली गई" : "No structured fields extracted"}
                           </span>
+                        )}
+                        <div className="flex items-center gap-1 pt-0.5">
+                          {doc.review_required ? (
+                            <>
+                              <AlertTriangle className="h-3 w-3 text-amber-500" />
+                              <span className="text-amber-500">{t("vault_review_required", language)}</span>
+                            </>
+                          ) : (
+                            <>
+                              <CheckCircle2 className="h-3 w-3 text-emerald-500" />
+                              <span className="text-emerald-500">{t("vault_verified", language)}</span>
+                            </>
+                          )}
+                        </div>
+                        {typeof doc.confidence === "number" && (
+                          <div className="text-slate-400">
+                            {t("vault_confidence", language)}:{" "}
+                            <span className="font-mono text-slate-300">
+                              {Math.round(doc.confidence * 100)}%
+                            </span>
+                          </div>
                         )}
                       </div>
                     </td>
                     <td className="py-3 text-right">
-                      <button
-                        onClick={() => onDelete(doc.id)}
-                        className="text-slate-400 hover:text-rose-500 transition-colors p-1 rounded-md hover:bg-rose-950/20"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      <div className="inline-flex items-center gap-1">
+                        <button
+                          onClick={() => onDownload(doc.id)}
+                          title={t("vault_download", language)}
+                          className="text-slate-400 hover:text-sky-400 transition-colors p-1 rounded-md hover:bg-sky-950/20"
+                        >
+                          <Download className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={() => onDelete(doc.id)}
+                          className="text-slate-400 hover:text-rose-500 transition-colors p-1 rounded-md hover:bg-rose-950/20"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );

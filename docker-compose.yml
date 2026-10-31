@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   backend:
     build:
@@ -8,24 +6,29 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=sqlite:///./saarthi.db
-      - SECRET_KEY=super-secret-key-change-it-in-production-123456789
+      - DATABASE_URL=sqlite:////backend/data/saarthi.db
+      - SECRET_KEY=change-this-secret-key-before-deploying
       - ENVIRONMENT=production
+      - AI_PROVIDER=mock
+      - UPLOAD_DIR=./uploads
+      - ALLOWED_ORIGINS=http://localhost:3000
     volumes:
-      - backend-uploads:/backend/app/uploads
-    restart: always
+      - backend-data:/backend/data
+      - backend-uploads:/backend/uploads
+    restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     ports:
       - "3000:3000"
-    environment:
-      - NEXT_PUBLIC_API_URL=https://saarthi-ai-ztrc.onrender.com
     depends_on:
       - backend
-    restart: always
+    restart: unless-stopped
 
 volumes:
+  backend-data:
   backend-uploads:

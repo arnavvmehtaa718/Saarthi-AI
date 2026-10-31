@@ -10,6 +10,7 @@ interface CompareSchemeData {
   benefits: string;
   benefit_type: string;
   eligibility_status: string;
+  eligibility_code?: string;
   eligibility_score: number;
   eligibility_explanation: string;
   documents: string[];
@@ -69,24 +70,25 @@ export default function SchemeCompare({ schemes, onRemove, onClose }: SchemeComp
               {/* Status */}
               <tr className="border-b border-slate-800 hover:bg-slate-800/20">
                 <td className="py-4 px-4 font-medium text-slate-400">Eligibility Status</td>
-                {schemes.map((s) => (
+                {schemes.map((s) => {
+                  const code = s.eligibility_code || s.eligibility_status;
+                  const badgeClass =
+                    code === "Eligible"
+                      ? "bg-emerald-500/10 text-emerald-400"
+                      : code === "Potentially Eligible"
+                      ? "bg-sky-500/10 text-sky-400"
+                      : code === "Insufficient Information"
+                      ? "bg-amber-500/10 text-amber-400"
+                      : "bg-rose-500/10 text-rose-400";
+                  return (
                   <td key={s.id} className="py-4 px-4">
-                    <span
-                      className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${
-                        s.eligibility_status === "Eligible"
-                          ? "bg-emerald-500/10 text-emerald-400"
-                          : s.eligibility_status === "Likely Eligible"
-                          ? "bg-sky-500/10 text-sky-400"
-                          : s.eligibility_status === "Missing Information"
-                          ? "bg-amber-500/10 text-amber-400"
-                          : "bg-rose-500/10 text-rose-400"
-                      }`}
-                    >
+                    <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${badgeClass}`}>
                       {s.eligibility_status} ({s.eligibility_score.toFixed(0)}%)
                     </span>
                     <p className="text-xs text-slate-400 mt-1 line-clamp-3">{s.eligibility_explanation}</p>
                   </td>
-                ))}
+                  );
+                })}
               </tr>
 
               {/* Benefits */}

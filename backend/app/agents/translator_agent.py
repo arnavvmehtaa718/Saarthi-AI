@@ -11,8 +11,10 @@ class AITranslatorAgent(BaseAgent):
         # High-fidelity static translations for seeded schemes & terms to support 100% offline mock execution
         self.translation_dictionary = {
             "eligible": "पात्र (Eligible)",
-            "likely eligible": "संभावित पात्र (Likely Eligible)",
-            "missing information": "अपूर्ण जानकारी (Missing Information)",
+            "potentially eligible": "संभावित पात्र (Potentially Eligible)",
+            "likely eligible": "संभावित पात्र (Potentially Eligible)",
+            "insufficient information": "अपूर्ण जानकारी (Insufficient Information)",
+            "missing information": "अपूर्ण जानकारी (Insufficient Information)",
             "not eligible": "अपात्र (Not Eligible)",
             "aadhaar": "आधार कार्ड (Aadhaar Card)",
             "pan": "पैन कार्ड (PAN Card)",
@@ -70,9 +72,8 @@ class AITranslatorAgent(BaseAgent):
             except Exception:
                 pass # fallback to original
 
-        # Mock translator (pre-appends language code indicator if not in dict)
-        if target_lang.lower() == "hi":
-            return f"[अनुवादित] {text}"
+        # No live translator and no dictionary entry: return the original text
+        # rather than pretending it was translated.
         return text
 
     def translate_scheme(self, scheme_data: Dict[str, Any], target_lang: str = "hi") -> Dict[str, Any]:
